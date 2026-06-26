@@ -1,2 +1,190 @@
-# account-service
-Account lifecycle and account lookup service for the Digital Bank Java platform
+# Account Service
+
+Account lifecycle and account lookup service for the Digital Bank Java platform.
+
+## Responsibilities
+
+- Own account identity and account lifecycle state.
+- Expose account creation and lookup capabilities.
+- Keep account data inside the Account Service boundary.
+- Prepare the account domain for later transaction-controlled balance workflows.
+
+## Non-Responsibilities
+
+- Customer profile ownership.
+- Authentication, authorization, sessions, or MFA.
+- Transfer orchestration or payment execution.
+- Public balance mutation APIs.
+- Storing secrets or environment-specific configuration in the application image.
+
+The current bootstrap establishes the deployable service boundary. Account domain logic and persistence are introduced in follow-up tasks.
+
+## Runtime Configuration
+
+The service is a Spring Cloud Config client. It loads shared, service-specific, and environment-specific configuration from Config Server.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CONFIG_SERVER_URL` | Config Server base URL | `http://localhost:8888` |
+| `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
+
+Secrets must not be committed to this repository or stored in the container image. Kubernetes and AWS environments will supply secrets through their approved secret-management integrations.
+
+## Prerequisites
+
+- Java 21.
+- Network access to Maven Central for the initial dependency download.
+- A running Config Server for normal application startup.
+- Docker Desktop for image builds.
+- Docker Desktop Kubernetes and Helm 4 for local SIT deployment.
+
+A global Maven installation is not required because the Maven Wrapper is included.
+
+```bash
+java -version
+./mvnw --version
+docker version
+kubectl config current-context
+helm version --short
+```
+
+## Test
+
+Run the complete Maven test suite from the repository root:
+
+```bash
+./mvnw test
+```
+
+Tests disable the external Config Server dependency so the build remains deterministic.
+
+## Run Locally
+
+Start Config Server on port `8888`, then start Account Service:
+
+```bash
+./mvnw spring-boot:run
+```
+
+When Config Server provides the service port, the intended Account Service port is `8082`.
+
+```bash
+curl --fail http://localhost:8082/actuator/health
+```
+
+## Run With Docker
+
+Build the image:
+
+```bash
+docker build \
+  --tag digital-bank-java/account-service:0.0.1 \
+  .
+```
+
+On Docker Desktop, connect the container to Config Server running on the host:
+
+```bash
+docker run --rm \
+  --name digital-bank-java-account-service \
+  --publish 8082:8082 \
+  --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
+  --env SPRING_PROFILES_ACTIVE=local \
+  digital-bank-java/account-service:0.0.1
+```
+
+The runtime image uses numeric non-root user and group `10001:10001`.
+
+## Deploy To Local SIT
+
+The Config Server release must already be healthy in the `digital-bank-sit` namespace. The Account Service chart uses the internal Kubernetes address `http://config-server:8888` and activates the `sit` profile.
+
+Validate the chart without changing the cluster:
+
+```bash
+helm lint helm --values helm/values-sit.yaml
+
+helm template account-service helm --values helm/values-sit.yaml |
+  kubectl apply --dry-run=client -f -
+```
+
+Install or upgrade the release:
+
+```bash
+helm upgrade --install account-service helm \
+  --namespace digital-bank-sit \
+  --create-namespace \
+  --values helm/values-sit.yaml \
+  --wait \
+  --timeout 5m
+```
+
+Inspect the deployment:
+
+```bash
+helm status account-service --namespace digital-bank-sit
+kubectl get deployment,pods,service --namespace digital-bank-sit
+kubectl logs deployment/account-service --namespace digital-bank-sit
+```
+
+Temporarily forward the internal Service for workstation verification:
+
+```bash
+kubectl port-forward \
+  service/account-service 18082:8082 \
+  --namespace digital-bank-sit
+```
+
+From another terminal:
+
+```bash
+curl --fail http://localhost:18082/actuator/health
+curl --fail http://localhost:18082/actuator/health/liveness
+curl --fail http://localhost:18082/actuator/health/readiness
+```
+
+Stop port forwarding with `Ctrl+C`. Remove only this release when cleanup is required:
+
+```bash
+helm uninstall account-service --namespace digital-bank-sit
+```
+
+## Deployment Security
+
+The Kubernetes deployment:
+
+- Runs as numeric non-root user and group `10001`.
+- Disables privilege escalation and drops Linux capabilities.
+- Uses a read-only root filesystem with bounded temporary storage.
+- Does not mount the default Kubernetes service account token.
+- Exposes the application only through an internal `ClusterIP` Service.
+- Defines startup, liveness, and readiness probes.
+
+## CI Validation
+
+Pull requests and changes to `main` run independent jobs that:
+
+- Execute Maven verification with Java 21.
+- Lint and render the Helm chart with Helm 4.2.0.
+- Build the container image, verify its non-root user, and smoke-test its health endpoint.
+
+Third-party GitHub Actions are pinned to immutable commit SHAs.
+
+## Environment Promotion
+
+The same application artifact is intended to move through SIT, UAT, and PROD without being rebuilt. Deployment pipelines provide environment-specific immutable image tags, Config Server addresses, profiles, resource sizing, and infrastructure integrations.
+
+AWS deployment will map the Kubernetes workload to EKS and use managed AWS services for configuration credentials, networking, observability, and secrets. Environment-specific secrets remain outside Git and Helm values.
+
+## Development Workflow
+
+Changes must be made on a dedicated branch and merged through a pull request. Do not commit directly to `main`.
+
+Before opening a pull request:
+
+```bash
+git status
+./mvnw test
+helm lint helm --strict
+git diff --check
+```
