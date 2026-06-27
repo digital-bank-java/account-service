@@ -129,6 +129,16 @@ class AccountApiIntegrationTests {
 		assertThat(openApi.path("paths").has("/api/v1/accounts")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/accounts/{accountId}")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/customers/{customerId}/accounts")).isTrue();
+
+		var openAccountResponses = openApi.path("paths").path("/api/v1/accounts").path("post").path("responses");
+		assertThat(openAccountResponses.path("201").path("content").has("application/json")).isTrue();
+		assertThat(openAccountResponses.path("400").path("content").has("application/problem+json")).isTrue();
+		assertThat(openAccountResponses.path("409").path("content").has("application/problem+json")).isTrue();
+		assertThat(openAccountResponses.path("400").path("content").has("application/json")).isFalse();
+
+		var getAccountResponses = openApi.path("paths").path("/api/v1/accounts/{accountId}").path("get").path("responses");
+		assertThat(getAccountResponses.path("200").path("content").has("application/json")).isTrue();
+		assertThat(getAccountResponses.path("404").path("content").has("application/problem+json")).isTrue();
 	}
 
 	private static String openAccountRequest(UUID customerId, String openingRequestId) {

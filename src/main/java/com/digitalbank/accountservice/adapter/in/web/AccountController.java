@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +23,9 @@ import com.digitalbank.accountservice.domain.model.AccountId;
 import com.digitalbank.accountservice.domain.model.CustomerId;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -45,9 +50,15 @@ class AccountController {
 
 	@PostMapping("/accounts")
 	@Operation(summary = "Open an account")
-	@ApiResponse(responseCode = "201", description = "Account opened")
-	@ApiResponse(responseCode = "400", description = "Invalid request")
-	@ApiResponse(responseCode = "409", description = "Account already exists")
+	@ApiResponse(responseCode = "201", description = "Account opened", content = @Content(
+			mediaType = MediaType.APPLICATION_JSON_VALUE,
+			schema = @Schema(implementation = AccountResponse.class)))
+	@ApiResponse(responseCode = "400", description = "Invalid request", content = @Content(
+			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+			schema = @Schema(implementation = ProblemDetail.class)))
+	@ApiResponse(responseCode = "409", description = "Account already exists", content = @Content(
+			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+			schema = @Schema(implementation = ProblemDetail.class)))
 	ResponseEntity<AccountResponse> openAccount(@Valid @RequestBody OpenAccountRequest request) {
 		var profile = openAccountInputPort.openAccount(new OpenAccountCommand(
 				new CustomerId(request.customerId()),
@@ -66,8 +77,12 @@ class AccountController {
 
 	@GetMapping("/accounts/{accountId}")
 	@Operation(summary = "Get an account")
-	@ApiResponse(responseCode = "200", description = "Account returned")
-	@ApiResponse(responseCode = "404", description = "Account not found")
+	@ApiResponse(responseCode = "200", description = "Account returned", content = @Content(
+			mediaType = MediaType.APPLICATION_JSON_VALUE,
+			schema = @Schema(implementation = AccountResponse.class)))
+	@ApiResponse(responseCode = "404", description = "Account not found", content = @Content(
+			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+			schema = @Schema(implementation = ProblemDetail.class)))
 	ResponseEntity<AccountResponse> getAccount(@PathVariable UUID accountId) {
 		var profile = getAccountInputPort.getAccount(new AccountId(accountId));
 		return ResponseEntity.ok(AccountResponse.from(profile));
@@ -75,7 +90,9 @@ class AccountController {
 
 	@GetMapping("/customers/{customerId}/accounts")
 	@Operation(summary = "List customer accounts")
-	@ApiResponse(responseCode = "200", description = "Customer accounts returned")
+	@ApiResponse(responseCode = "200", description = "Customer accounts returned", content = @Content(
+			mediaType = MediaType.APPLICATION_JSON_VALUE,
+			array = @ArraySchema(schema = @Schema(implementation = AccountResponse.class))))
 	ResponseEntity<List<AccountResponse>> listCustomerAccounts(@PathVariable UUID customerId) {
 		var accounts = listCustomerAccountsInputPort.listCustomerAccounts(new CustomerId(customerId)).stream()
 				.map(AccountResponse::from)
