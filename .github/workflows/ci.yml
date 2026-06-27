@@ -87,6 +87,7 @@ jobs:
         run: |
           cleanup() {
             docker rm --force account-service-ci > /dev/null 2>&1 || true
+            docker rm --force account-service-postgres-ci > /dev/null 2>&1 || true
             if [[ -n "${mock_server_pid:-}" ]]; then
               kill "${mock_server_pid}" > /dev/null 2>&1 || true
             fi
@@ -96,6 +97,22 @@ jobs:
           test "$(docker image inspect \
             --format '{{.Config.User}}' \
             digital-bank-java/account-service:ci)" = "10001:10001"
+
+          docker run --detach \
+            --name account-service-postgres-ci \
+            --publish 5432:5432 \
+            --env POSTGRES_DB=account_service_ci \
+            --env POSTGRES_USER=account_service \
+            --env POSTGRES_PASSWORD=account_service \
+            postgres:16-alpine
+
+          for attempt in {1..30}; do
+            if docker exec account-service-postgres-ci \
+              pg_isready --username account_service --dbname account_service_ci > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
 
           python3 - <<'PY' &
           import json
@@ -112,6 +129,9 @@ jobs:
                       "name": "ci",
                       "source": {
                           "server.port": 8082,
+                          "spring.datasource.url": "jdbc:postgresql://host.docker.internal:5432/account_service_ci",
+                          "spring.datasource.username": "account_service",
+                          "spring.datasource.password": "account_service",
                       },
                   }
               ],
