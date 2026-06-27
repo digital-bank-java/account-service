@@ -5,12 +5,17 @@ revisionHistoryLimit: 3
 
 image:
   repository: digital-bank-java/account-service
-  tag: "0.0.1"
+  tag: "0.0.2"
   pullPolicy: IfNotPresent
 
 runtime:
   profile: default
   configServerUrl: http://config-server:8888
+
+database:
+  secretName: postgres
+  usernameKey: POSTGRES_USER
+  passwordKey: POSTGRES_PASSWORD
 
 service:
   type: ClusterIP
