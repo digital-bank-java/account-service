@@ -41,6 +41,7 @@ class AccountApiIntegrationTests {
 		var openResponse = sendJson("POST", "/api/v1/accounts", openAccountRequest(customerId, "open-account-request-001"));
 
 		assertThat(openResponse.statusCode()).isEqualTo(201);
+		assertContentType(openResponse, "application/json");
 		assertThat(openResponse.headers().firstValue("location")).hasValueSatisfying(location -> {
 			assertThat(location).startsWith("/api/v1/accounts/");
 		});
@@ -57,23 +58,35 @@ class AccountApiIntegrationTests {
 		var getResponse = send("GET", "/api/v1/accounts/" + openedAccount.path("accountId").asText());
 
 		assertThat(getResponse.statusCode()).isEqualTo(200);
+		assertContentType(getResponse, "application/json");
 		var retrievedAccount = objectMapper.readTree(getResponse.body());
 		assertThat(retrievedAccount.path("accountId").asText()).isEqualTo(openedAccount.path("accountId").asText());
 		assertThat(retrievedAccount.path("customerId").asText()).isEqualTo(customerId.toString());
 	}
 
 	@Test
-	void listsCustomerAccounts() throws Exception {
+	void listsMultipleAccountsForSameCustomerTypeAndCurrency() throws Exception {
 		var customerId = UUID.randomUUID();
-		sendJson("POST", "/api/v1/accounts", openAccountRequest(customerId, "open-account-request-002"));
-		sendJson("POST", "/api/v1/accounts", openAccountRequest(customerId, "open-account-request-003"));
+		var firstOpenResponse = sendJson("POST", "/api/v1/accounts",
+				openAccountRequest(customerId, "open-account-request-002"));
+		var secondOpenResponse = sendJson("POST", "/api/v1/accounts",
+				openAccountRequest(customerId, "open-account-request-003"));
+		var firstAccount = objectMapper.readTree(firstOpenResponse.body());
+		var secondAccount = objectMapper.readTree(secondOpenResponse.body());
 
 		var response = send("GET", "/api/v1/customers/" + customerId + "/accounts");
 
+		assertThat(firstOpenResponse.statusCode()).isEqualTo(201);
+		assertThat(secondOpenResponse.statusCode()).isEqualTo(201);
 		assertThat(response.statusCode()).isEqualTo(200);
+		assertContentType(response, "application/json");
 		var accounts = objectMapper.readTree(response.body());
 		assertThat(accounts).hasSize(2);
+		assertThat(accounts.findValuesAsText("accountId"))
+				.containsExactlyInAnyOrder(firstAccount.path("accountId").asText(), secondAccount.path("accountId").asText());
 		assertThat(accounts.findValuesAsText("customerId")).containsOnly(customerId.toString());
+		assertThat(accounts.findValuesAsText("accountType")).containsOnly("CURRENT");
+		assertThat(accounts.findValuesAsText("currency")).containsOnly("AED");
 	}
 
 	@Test
@@ -89,7 +102,9 @@ class AccountApiIntegrationTests {
 				""");
 
 		assertThat(response.statusCode()).isEqualTo(400);
+		assertContentType(response, "application/problem+json");
 		var problem = objectMapper.readTree(response.body());
+		assertThat(problem.path("type").asText()).isEqualTo("https://digital-bank-java.local/problems/validation-error");
 		assertThat(problem.path("title").asText()).isEqualTo("Invalid request");
 		assertThat(problem.path("errors")).isNotEmpty();
 	}
@@ -101,7 +116,9 @@ class AccountApiIntegrationTests {
 		var response = send("GET", "/api/v1/accounts/" + missingAccountId);
 
 		assertThat(response.statusCode()).isEqualTo(404);
+		assertContentType(response, "application/problem+json");
 		var problem = objectMapper.readTree(response.body());
+		assertThat(problem.path("type").asText()).isEqualTo("https://digital-bank-java.local/problems/account-not-found");
 		assertThat(problem.path("title").asText()).isEqualTo("Account not found");
 		assertThat(problem.path("accountId").asText()).isEqualTo(missingAccountId.toString());
 	}
@@ -116,7 +133,9 @@ class AccountApiIntegrationTests {
 
 		assertThat(firstResponse.statusCode()).isEqualTo(201);
 		assertThat(duplicateResponse.statusCode()).isEqualTo(409);
+		assertContentType(duplicateResponse, "application/problem+json");
 		var problem = objectMapper.readTree(duplicateResponse.body());
+		assertThat(problem.path("type").asText()).isEqualTo("https://digital-bank-java.local/problems/account-conflict");
 		assertThat(problem.path("title").asText()).isEqualTo("Account conflict");
 	}
 
@@ -125,6 +144,7 @@ class AccountApiIntegrationTests {
 		var response = send("GET", "/v3/api-docs");
 
 		assertThat(response.statusCode()).isEqualTo(200);
+		assertContentType(response, "application/json");
 		var openApi = objectMapper.readTree(response.body());
 		assertThat(openApi.path("paths").has("/api/v1/accounts")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/accounts/{accountId}")).isTrue();
@@ -154,6 +174,17 @@ class AccountApiIntegrationTests {
 				.path("application/problem+json")
 				.path("examples")
 				.has("account-not-found")).isTrue();
+
+		var listCustomerAccountsResponses = openApi.path("paths")
+				.path("/api/v1/customers/{customerId}/accounts")
+				.path("get")
+				.path("responses");
+		assertThat(listCustomerAccountsResponses.path("200").path("content").has("application/json")).isTrue();
+	}
+
+	private static void assertContentType(HttpResponse<String> response, String expectedContentType) {
+		assertThat(response.headers().firstValue("content-type"))
+				.hasValueSatisfying(contentType -> assertThat(contentType).startsWith(expectedContentType));
 	}
 
 	private static String openAccountRequest(UUID customerId, String openingRequestId) {

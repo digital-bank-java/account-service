@@ -149,6 +149,80 @@ Stop port forwarding with `Ctrl+C`. Remove only this release when cleanup is req
 helm uninstall account-service --namespace digital-bank-sit
 ```
 
+## API Gateway and Insomnia Verification
+
+In local SIT, API clients should normally enter through API Gateway instead of port-forwarding Account Service directly.
+
+Start API Gateway port forwarding:
+
+```bash
+kubectl port-forward \
+  service/api-gateway 8080:8080 \
+  --namespace digital-bank-sit
+```
+
+Use this Insomnia environment variable:
+
+```json
+{
+  "apiGatewayUrl": "http://localhost:8080"
+}
+```
+
+Verify Account Service through API Gateway:
+
+```bash
+curl --fail http://localhost:8080/account-service/actuator/health
+curl --fail http://localhost:8080/admin/docs/account-service/v3/api-docs
+```
+
+In Insomnia, create equivalent requests using the environment variable:
+
+```text
+GET {{ _.apiGatewayUrl }}/account-service/actuator/health
+GET {{ _.apiGatewayUrl }}/admin/docs/account-service/v3/api-docs
+POST {{ _.apiGatewayUrl }}/api/v1/accounts
+GET {{ _.apiGatewayUrl }}/api/v1/accounts/{{ _.accountId }}
+GET {{ _.apiGatewayUrl }}/api/v1/customers/{{ _.customerId }}/accounts
+```
+
+Use this request body when opening an account:
+
+```json
+{
+  "customerId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "accountNumber": "ACC-000000000001",
+  "iban": "AE0703312345678900000001",
+  "accountType": "CURRENT",
+  "currency": "AED",
+  "openingRequestId": "open-account-request-001"
+}
+```
+
+The equivalent terminal command is:
+
+```bash
+curl --request POST http://localhost:8080/api/v1/accounts \
+  --header "Content-Type: application/json" \
+  --data '{
+    "customerId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "accountNumber": "ACC-000000000001",
+    "iban": "AE0703312345678900000001",
+    "accountType": "CURRENT",
+    "currency": "AED",
+    "openingRequestId": "open-account-request-001"
+  }'
+```
+
+Copy the returned `accountId`, then verify lookup endpoints:
+
+```bash
+curl --fail http://localhost:8080/api/v1/accounts/<account-id>
+curl --fail http://localhost:8080/api/v1/customers/3fa85f64-5717-4562-b3fc-2c963f66afa6/accounts
+```
+
+Stop API Gateway port forwarding with `Ctrl+C`.
+
 ## Deployment Security
 
 The Kubernetes deployment:
