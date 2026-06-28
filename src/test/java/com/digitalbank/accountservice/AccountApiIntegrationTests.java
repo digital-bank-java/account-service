@@ -135,10 +135,25 @@ class AccountApiIntegrationTests {
 		assertThat(openAccountResponses.path("400").path("content").has("application/problem+json")).isTrue();
 		assertThat(openAccountResponses.path("409").path("content").has("application/problem+json")).isTrue();
 		assertThat(openAccountResponses.path("400").path("content").has("application/json")).isFalse();
+		assertThat(openAccountResponses.path("400")
+				.path("content")
+				.path("application/problem+json")
+				.path("examples")
+				.has("validation-error")).isTrue();
+		assertThat(openAccountResponses.path("409")
+				.path("content")
+				.path("application/problem+json")
+				.path("examples")
+				.has("account-conflict")).isTrue();
 
 		var getAccountResponses = openApi.path("paths").path("/api/v1/accounts/{accountId}").path("get").path("responses");
 		assertThat(getAccountResponses.path("200").path("content").has("application/json")).isTrue();
 		assertThat(getAccountResponses.path("404").path("content").has("application/problem+json")).isTrue();
+		assertThat(getAccountResponses.path("404")
+				.path("content")
+				.path("application/problem+json")
+				.path("examples")
+				.has("account-not-found")).isTrue();
 	}
 
 	private static String openAccountRequest(UUID customerId, String openingRequestId) {
