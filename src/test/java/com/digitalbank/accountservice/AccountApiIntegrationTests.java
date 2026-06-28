@@ -6,6 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -68,9 +69,9 @@ class AccountApiIntegrationTests {
 	void listsMultipleAccountsForSameCustomerTypeAndCurrency() throws Exception {
 		var customerId = UUID.randomUUID();
 		var firstOpenResponse = sendJson("POST", "/api/v1/accounts",
-				openAccountRequest(customerId, "open-account-request-002"));
+				openAccountRequest(customerId, "open-account-request-002", "CURRENT", "AED"));
 		var secondOpenResponse = sendJson("POST", "/api/v1/accounts",
-				openAccountRequest(customerId, "open-account-request-003"));
+				openAccountRequest(customerId, "open-account-request-003", "CURRENT", "AED"));
 		var firstAccount = objectMapper.readTree(firstOpenResponse.body());
 		var secondAccount = objectMapper.readTree(secondOpenResponse.body());
 
@@ -87,6 +88,67 @@ class AccountApiIntegrationTests {
 		assertThat(accounts.findValuesAsText("customerId")).containsOnly(customerId.toString());
 		assertThat(accounts.findValuesAsText("accountType")).containsOnly("CURRENT");
 		assertThat(accounts.findValuesAsText("currency")).containsOnly("AED");
+	}
+
+	@Test
+	void returnsEmptyAdminAccountPage() throws Exception {
+		var response = send("GET", "/admin/v1/accounts?customerId=" + UUID.randomUUID());
+
+		assertThat(response.statusCode()).isEqualTo(200);
+		assertContentType(response, "application/json");
+		var page = objectMapper.readTree(response.body());
+		assertThat(page.path("items")).isEmpty();
+		assertThat(page.path("nextPageToken").isMissingNode() || page.path("nextPageToken").isNull()).isTrue();
+		assertThat(page.path("pageSize").asInt()).isEqualTo(20);
+	}
+
+	@Test
+	void returnsFilteredAdminAccountPageWithNextPageToken() throws Exception {
+		var customerId = UUID.randomUUID();
+		var otherCustomerId = UUID.randomUUID();
+		var firstOpenResponse = sendJson("POST", "/api/v1/accounts",
+				openAccountRequest(customerId, "admin-open-account-request-001", "CURRENT", "AED"));
+		var secondOpenResponse = sendJson("POST", "/api/v1/accounts",
+				openAccountRequest(customerId, "admin-open-account-request-002", "SAVINGS", "AED"));
+		sendJson("POST", "/api/v1/accounts",
+				openAccountRequest(otherCustomerId, "admin-open-account-request-003", "CURRENT", "USD"));
+		var firstAccount = objectMapper.readTree(firstOpenResponse.body());
+		var secondAccount = objectMapper.readTree(secondOpenResponse.body());
+
+		var firstPageResponse = send("GET", "/admin/v1/accounts?customerId=" + customerId + "&currency=AED&pageSize=1");
+
+		assertThat(firstPageResponse.statusCode()).isEqualTo(200);
+		assertContentType(firstPageResponse, "application/json");
+		var firstPage = objectMapper.readTree(firstPageResponse.body());
+		assertThat(firstPage.path("items")).hasSize(1);
+		assertThat(firstPage.path("items").findValuesAsText("customerId")).containsOnly(customerId.toString());
+		assertThat(firstPage.path("items").findValuesAsText("currency")).containsOnly("AED");
+		assertThat(firstPage.path("nextPageToken").asText()).isEqualTo("1");
+		assertThat(firstPage.path("pageSize").asInt()).isEqualTo(1);
+		var firstPageAccountId = firstPage.path("items").get(0).path("accountId").asText();
+
+		var secondPageResponse = send("GET",
+				"/admin/v1/accounts?customerId=" + customerId + "&currency=AED&pageSize=1&pageToken=1");
+
+		assertThat(secondPageResponse.statusCode()).isEqualTo(200);
+		var secondPage = objectMapper.readTree(secondPageResponse.body());
+		assertThat(secondPage.path("items")).hasSize(1);
+		assertThat(secondPage.path("nextPageToken").isMissingNode() || secondPage.path("nextPageToken").isNull()).isTrue();
+		var secondPageAccountId = secondPage.path("items").get(0).path("accountId").asText();
+		assertThat(firstPageAccountId).isNotEqualTo(secondPageAccountId);
+		assertThat(List.of(firstPageAccountId, secondPageAccountId))
+				.containsExactlyInAnyOrder(firstAccount.path("accountId").asText(), secondAccount.path("accountId").asText());
+	}
+
+	@Test
+	void rejectsInvalidAdminAccountPageSize() throws Exception {
+		var response = send("GET", "/admin/v1/accounts?pageSize=101");
+
+		assertThat(response.statusCode()).isEqualTo(400);
+		assertContentType(response, "application/problem+json");
+		var problem = objectMapper.readTree(response.body());
+		assertThat(problem.path("type").asText()).isEqualTo("https://digital-bank-java.local/problems/validation-error");
+		assertThat(problem.path("title").asText()).isEqualTo("Invalid request");
 	}
 
 	@Test
@@ -149,6 +211,7 @@ class AccountApiIntegrationTests {
 		assertThat(openApi.path("paths").has("/api/v1/accounts")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/accounts/{accountId}")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/customers/{customerId}/accounts")).isTrue();
+		assertThat(openApi.path("paths").has("/admin/v1/accounts")).isTrue();
 
 		var openAccountResponses = openApi.path("paths").path("/api/v1/accounts").path("post").path("responses");
 		assertThat(openAccountResponses.path("201").path("content").has("application/json")).isTrue();
@@ -180,6 +243,10 @@ class AccountApiIntegrationTests {
 				.path("get")
 				.path("responses");
 		assertThat(listCustomerAccountsResponses.path("200").path("content").has("application/json")).isTrue();
+
+		var adminAccountResponses = openApi.path("paths").path("/admin/v1/accounts").path("get").path("responses");
+		assertThat(adminAccountResponses.path("200").path("content").has("application/json")).isTrue();
+		assertThat(adminAccountResponses.path("400").path("content").has("application/problem+json")).isTrue();
 	}
 
 	private static void assertContentType(HttpResponse<String> response, String expectedContentType) {
@@ -188,17 +255,21 @@ class AccountApiIntegrationTests {
 	}
 
 	private static String openAccountRequest(UUID customerId, String openingRequestId) {
+		return openAccountRequest(customerId, openingRequestId, "CURRENT", "AED");
+	}
+
+	private static String openAccountRequest(UUID customerId, String openingRequestId, String accountType, String currency) {
 		var sequence = ACCOUNT_SEQUENCE.getAndIncrement();
 		return """
 				{
 				  "customerId": "%s",
 				  "accountNumber": "ACC-%012d",
 				  "iban": "AE07033123456789%08d",
-				  "accountType": "CURRENT",
-				  "currency": "AED",
+				  "accountType": "%s",
+				  "currency": "%s",
 				  "openingRequestId": "%s"
 				}
-				""".formatted(customerId, sequence, sequence, openingRequestId);
+				""".formatted(customerId, sequence, sequence, accountType, currency, openingRequestId);
 	}
 
 	private HttpResponse<String> send(String method, String path) throws Exception {

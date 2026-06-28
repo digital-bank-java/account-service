@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.digitalbank.accountservice.domain.exception.AccountNotFoundException;
 
+import jakarta.validation.ConstraintViolationException;
+
 @RestControllerAdvice
 class ApiExceptionHandler {
 
@@ -39,6 +41,21 @@ class ApiExceptionHandler {
 				.map(error -> Map.of(
 						"field", error.getField(),
 						"message", String.valueOf(error.getDefaultMessage())))
+				.toList();
+
+		var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request validation failed");
+		problem.setTitle("Invalid request");
+		problem.setType(URI.create("https://digital-bank-java.local/problems/validation-error"));
+		problem.setProperty("errors", errors);
+		return ResponseEntity.badRequest().body(problem);
+	}
+
+	@ExceptionHandler(ConstraintViolationException.class)
+	ResponseEntity<ProblemDetail> handleQueryParameterValidationFailure(ConstraintViolationException exception) {
+		var errors = exception.getConstraintViolations().stream()
+				.map(violation -> Map.of(
+						"field", violation.getPropertyPath().toString(),
+						"message", violation.getMessage()))
 				.toList();
 
 		var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request validation failed");
