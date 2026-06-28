@@ -184,6 +184,8 @@ GET {{ _.apiGatewayUrl }}/admin/docs/account-service/v3/api-docs
 POST {{ _.apiGatewayUrl }}/api/v1/accounts
 GET {{ _.apiGatewayUrl }}/api/v1/accounts/{{ _.accountId }}
 GET {{ _.apiGatewayUrl }}/api/v1/customers/{{ _.customerId }}/accounts
+GET {{ _.apiGatewayUrl }}/admin/v1/accounts?page=0&size=20
+GET {{ _.apiGatewayUrl }}/admin/v1/accounts?customerId={{ _.customerId }}&status=ACTIVE&page=0&size=20&sort=balance,desc&sort=createdAt,asc
 ```
 
 Use this request body when opening an account:
@@ -219,6 +221,7 @@ Copy the returned `accountId`, then verify lookup endpoints:
 ```bash
 curl --fail http://localhost:8080/api/v1/accounts/<account-id>
 curl --fail http://localhost:8080/api/v1/customers/3fa85f64-5717-4562-b3fc-2c963f66afa6/accounts
+curl --fail "http://localhost:8080/admin/v1/accounts?customerId=3fa85f64-5717-4562-b3fc-2c963f66afa6&status=ACTIVE&page=0&size=20&sort=balance,desc&sort=createdAt,asc"
 ```
 
 Stop API Gateway port forwarding with `Ctrl+C`.

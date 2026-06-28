@@ -8,9 +8,13 @@ import org.springframework.stereotype.Service;
 
 import com.digitalbank.accountservice.application.port.in.AccountProfile;
 import com.digitalbank.accountservice.application.port.in.GetAccountInputPort;
+import com.digitalbank.accountservice.application.port.in.ListAccountsInputPort;
+import com.digitalbank.accountservice.application.port.in.ListAccountsQuery;
 import com.digitalbank.accountservice.application.port.in.ListCustomerAccountsInputPort;
 import com.digitalbank.accountservice.application.port.in.OpenAccountCommand;
 import com.digitalbank.accountservice.application.port.in.OpenAccountInputPort;
+import com.digitalbank.accountservice.application.port.in.PaginatedAccountProfiles;
+import com.digitalbank.accountservice.application.port.out.AccountSearchCriteria;
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
 import com.digitalbank.accountservice.domain.exception.AccountNotFoundException;
 import com.digitalbank.accountservice.domain.model.Account;
@@ -19,7 +23,8 @@ import com.digitalbank.accountservice.domain.model.AccountType;
 import com.digitalbank.accountservice.domain.model.CustomerId;
 
 @Service
-public class AccountService implements OpenAccountInputPort, GetAccountInputPort, ListCustomerAccountsInputPort {
+public class AccountService
+		implements OpenAccountInputPort, GetAccountInputPort, ListCustomerAccountsInputPort, ListAccountsInputPort {
 
 	private final AccountRepository accountRepository;
 	private final Clock clock;
@@ -81,5 +86,28 @@ public class AccountService implements OpenAccountInputPort, GetAccountInputPort
 		return accountRepository.findByCustomerId(customerId).stream()
 				.map(AccountProfile::fromAccount)
 				.toList();
+	}
+
+	@Override
+	public PaginatedAccountProfiles listAccounts(ListAccountsQuery query) {
+		var result = accountRepository.search(new AccountSearchCriteria(
+				query.customerId(),
+				query.status(),
+				query.accountType(),
+				query.currency(),
+				query.pageNumber(),
+				query.pageSize(),
+				query.sort()));
+		var items = result.accounts().stream()
+				.map(AccountProfile::fromAccount)
+				.toList();
+
+		return new PaginatedAccountProfiles(
+				items,
+				result.pageNumber(),
+				result.pageSize(),
+				result.totalElements(),
+				result.totalPages(),
+				result.last());
 	}
 }

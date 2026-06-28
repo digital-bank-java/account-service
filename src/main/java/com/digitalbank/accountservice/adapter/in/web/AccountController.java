@@ -2,24 +2,33 @@ package com.digitalbank.accountservice.adapter.in.web;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
 
+import com.digitalbank.accountservice.application.model.AccountSortOrder;
 import com.digitalbank.accountservice.application.port.in.GetAccountInputPort;
+import com.digitalbank.accountservice.application.port.in.ListAccountsInputPort;
+import com.digitalbank.accountservice.application.port.in.ListAccountsQuery;
 import com.digitalbank.accountservice.application.port.in.ListCustomerAccountsInputPort;
 import com.digitalbank.accountservice.application.port.in.OpenAccountCommand;
 import com.digitalbank.accountservice.application.port.in.OpenAccountInputPort;
 import com.digitalbank.accountservice.domain.model.AccountId;
+import com.digitalbank.accountservice.domain.model.AccountStatus;
+import com.digitalbank.accountservice.domain.model.AccountType;
 import com.digitalbank.accountservice.domain.model.CustomerId;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,27 +38,33 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1")
 @Tag(name = "Accounts")
+@Validated
 class AccountController {
 
 	private final OpenAccountInputPort openAccountInputPort;
 	private final GetAccountInputPort getAccountInputPort;
 	private final ListCustomerAccountsInputPort listCustomerAccountsInputPort;
+	private final ListAccountsInputPort listAccountsInputPort;
 
 	AccountController(
 			OpenAccountInputPort openAccountInputPort,
 			GetAccountInputPort getAccountInputPort,
-			ListCustomerAccountsInputPort listCustomerAccountsInputPort) {
+			ListCustomerAccountsInputPort listCustomerAccountsInputPort,
+			ListAccountsInputPort listAccountsInputPort) {
 		this.openAccountInputPort = openAccountInputPort;
 		this.getAccountInputPort = getAccountInputPort;
 		this.listCustomerAccountsInputPort = listCustomerAccountsInputPort;
+		this.listAccountsInputPort = listAccountsInputPort;
 	}
 
-	@PostMapping("/accounts")
+	@PostMapping("/api/v1/accounts")
 	@Operation(summary = "Open an account")
 	@ApiResponse(responseCode = "201", description = "Account opened", content = @Content(
 			mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -84,7 +99,7 @@ class AccountController {
 				.body(response);
 	}
 
-	@GetMapping("/accounts/{accountId}")
+	@GetMapping("/api/v1/accounts/{accountId}")
 	@Operation(summary = "Get an account")
 	@ApiResponse(responseCode = "200", description = "Account returned", content = @Content(
 			mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -101,7 +116,7 @@ class AccountController {
 		return ResponseEntity.ok(AccountResponse.from(profile));
 	}
 
-	@GetMapping("/customers/{customerId}/accounts")
+	@GetMapping("/api/v1/customers/{customerId}/accounts")
 	@Operation(summary = "List customer accounts")
 	@ApiResponse(responseCode = "200", description = "Customer accounts returned", content = @Content(
 			mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -112,6 +127,87 @@ class AccountController {
 				.toList();
 		return ResponseEntity.ok(accounts);
 	}
+
+	@GetMapping("/admin/v1/accounts")
+	@Operation(summary = "Search accounts for administration")
+	@ApiResponse(responseCode = "200", description = "Accounts returned", content = @Content(
+			mediaType = MediaType.APPLICATION_JSON_VALUE,
+			schema = @Schema(implementation = AccountPageResponse.class)))
+	@ApiResponse(responseCode = "400", description = "Invalid query parameter", content = @Content(
+			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+			schema = @Schema(implementation = ProblemDetail.class),
+			examples = @ExampleObject(
+					name = "validation-error",
+					summary = "Query parameter validation failure",
+					value = VALIDATION_PROBLEM_EXAMPLE)))
+	ResponseEntity<AccountPageResponse> listAccounts(
+			@RequestParam(required = false) UUID customerId,
+			@RequestParam(required = false) AccountStatus status,
+			@RequestParam(required = false) AccountType accountType,
+			@RequestParam(required = false) @Pattern(regexp = "^[A-Z]{3}$") String currency,
+			@RequestParam(defaultValue = "0") @Min(0) int page,
+			@RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+			@RequestParam(required = false) List<String> sort) {
+		var query = new ListAccountsQuery(
+				customerId == null ? null : new CustomerId(customerId),
+				status,
+				accountType,
+				currency,
+				page,
+				size,
+				parseSort(sort));
+		return ResponseEntity.ok(AccountPageResponse.from(listAccountsInputPort.listAccounts(query)));
+	}
+
+	private static List<AccountSortOrder> parseSort(List<String> sort) {
+		if (sort == null || sort.isEmpty()) {
+			return List.of();
+		}
+
+		return sort.stream()
+				.map(AccountController::parseSortOrder)
+				.toList();
+	}
+
+	private static AccountSortOrder parseSortOrder(String sort) {
+		var parts = sort.split(",", -1);
+		if (parts.length > 2 || parts[0].isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sort parameter: " + sort);
+		}
+
+		var property = SORT_PROPERTIES.get(parts[0]);
+		if (property == null) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort property: " + parts[0]);
+		}
+
+		var direction = AccountSortOrder.Direction.ASC;
+		if (parts.length == 2 && !parts[1].isBlank()) {
+			direction = parseSortDirection(parts[1]);
+		}
+
+		return new AccountSortOrder(property, direction);
+	}
+
+	private static AccountSortOrder.Direction parseSortDirection(String direction) {
+		return switch (direction.toLowerCase(Locale.ROOT)) {
+			case "asc" -> AccountSortOrder.Direction.ASC;
+			case "desc" -> AccountSortOrder.Direction.DESC;
+			default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort direction: " + direction);
+		};
+	}
+
+	private static final Map<String, String> SORT_PROPERTIES = Map.ofEntries(
+			Map.entry("accountId", "id"),
+			Map.entry("customerId", "customerId"),
+			Map.entry("accountNumber", "accountNumber"),
+			Map.entry("accountType", "accountType"),
+			Map.entry("currency", "currency"),
+			Map.entry("status", "status"),
+			Map.entry("balance", "currentBalance"),
+			Map.entry("currentBalance", "currentBalance"),
+			Map.entry("availableBalance", "availableBalance"),
+			Map.entry("createdAt", "createdAt"),
+			Map.entry("updatedAt", "updatedAt"));
 
 	private static final String VALIDATION_PROBLEM_EXAMPLE = """
 			{

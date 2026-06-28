@@ -12,6 +12,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
+import com.digitalbank.accountservice.application.port.in.ListAccountsQuery;
+import com.digitalbank.accountservice.application.port.out.AccountSearchCriteria;
+import com.digitalbank.accountservice.application.port.out.AccountSearchResult;
 import com.digitalbank.accountservice.domain.model.Account;
 import com.digitalbank.accountservice.domain.model.AccountId;
 import com.digitalbank.accountservice.domain.model.AccountStatus;
@@ -87,6 +90,37 @@ class AccountServiceTests {
 		assertThat(accountService.findById(AccountId.newId())).isEmpty();
 	}
 
+	@Test
+	void listsAccountsForAdministration() {
+		var customerId = CustomerId.newId();
+		var account = accountService.openAccount(
+				customerId,
+				"1000000001",
+				"AE070331234567890123456",
+				AccountType.SAVINGS,
+				"USD",
+				"open-request-001");
+
+		var page = accountService.listAccounts(new ListAccountsQuery(
+				customerId,
+				AccountStatus.ACTIVE,
+				AccountType.SAVINGS,
+				"USD",
+				0,
+				20,
+				List.of()));
+
+		assertThat(page.items()).singleElement().satisfies(profile -> {
+			assertThat(profile.accountId()).isEqualTo(account.id().value().toString());
+			assertThat(profile.customerId()).isEqualTo(customerId.value().toString());
+		});
+		assertThat(page.pageNumber()).isZero();
+		assertThat(page.pageSize()).isEqualTo(20);
+		assertThat(page.totalElements()).isEqualTo(1);
+		assertThat(page.totalPages()).isEqualTo(1);
+		assertThat(page.last()).isTrue();
+	}
+
 	private static final class InMemoryAccountRepository implements AccountRepository {
 
 		private final List<Account> accounts = new ArrayList<>();
@@ -109,6 +143,23 @@ class AccountServiceTests {
 			return accounts.stream()
 					.filter(account -> account.customerId().equals(customerId))
 					.toList();
+		}
+
+		@Override
+		public AccountSearchResult search(AccountSearchCriteria criteria) {
+			var matches = accounts.stream()
+					.filter(account -> criteria.customerId() == null || account.customerId().equals(criteria.customerId()))
+					.filter(account -> criteria.status() == null || account.status().equals(criteria.status()))
+					.filter(account -> criteria.accountType() == null || account.type().equals(criteria.accountType()))
+					.filter(account -> criteria.currency() == null || account.currency().equals(criteria.currency()))
+					.toList();
+			return new AccountSearchResult(
+					matches,
+					criteria.pageNumber(),
+					criteria.pageSize(),
+					matches.size(),
+					matches.isEmpty() ? 0 : 1,
+					true);
 		}
 
 		private List<Account> savedAccounts() {

@@ -14,4 +14,6 @@ public interface AccountRepository {
 	Optional<Account> findById(AccountId accountId);
 
 	List<Account> findByCustomerId(CustomerId customerId);
+
+	AccountSearchResult search(AccountSearchCriteria criteria);
 }
