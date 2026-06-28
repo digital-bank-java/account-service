@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 
+import com.digitalbank.accountservice.application.model.AccountSortOrder;
 import com.digitalbank.accountservice.application.port.out.AccountSearchCriteria;
 import com.digitalbank.accountservice.application.port.out.AccountSearchResult;
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
@@ -46,14 +47,38 @@ class PostgresAccountRepository implements AccountRepository {
 		var pageRequest = PageRequest.of(
 				criteria.pageNumber(),
 				criteria.pageSize(),
-				Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.ASC, "id")));
+				sortFor(criteria));
 		var page = repository.findAll(specificationFor(criteria), pageRequest);
 		var accounts = page.getContent().stream()
 				.map(AccountJpaMapper::toDomain)
 				.toList();
-		var nextPageToken = page.hasNext() ? String.valueOf(page.getNumber() + 1) : null;
 
-		return new AccountSearchResult(accounts, nextPageToken, page.getSize());
+		return new AccountSearchResult(
+				accounts,
+				page.getNumber(),
+				page.getSize(),
+				page.getTotalElements(),
+				page.getTotalPages(),
+				page.isLast());
+	}
+
+	private static Sort sortFor(AccountSearchCriteria criteria) {
+		if (criteria.sort() == null || criteria.sort().isEmpty()) {
+			return Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.ASC, "id"));
+		}
+
+		var orders = criteria.sort().stream()
+				.map(PostgresAccountRepository::toOrder)
+				.toList();
+		return Sort.by(orders);
+	}
+
+	private static Sort.Order toOrder(AccountSortOrder sortOrder) {
+		var direction = switch (sortOrder.direction()) {
+			case ASC -> Sort.Direction.ASC;
+			case DESC -> Sort.Direction.DESC;
+		};
+		return new Sort.Order(direction, sortOrder.property());
 	}
 
 	private static Specification<AccountJpaEntity> specificationFor(AccountSearchCriteria criteria) {

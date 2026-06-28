@@ -2,12 +2,15 @@ package com.digitalbank.accountservice.adapter.in.web;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.validation.annotation.Validated;
 
+import com.digitalbank.accountservice.application.model.AccountSortOrder;
 import com.digitalbank.accountservice.application.port.in.GetAccountInputPort;
 import com.digitalbank.accountservice.application.port.in.ListAccountsInputPort;
 import com.digitalbank.accountservice.application.port.in.ListAccountsQuery;
@@ -141,17 +145,69 @@ class AccountController {
 			@RequestParam(required = false) AccountStatus status,
 			@RequestParam(required = false) AccountType accountType,
 			@RequestParam(required = false) @Pattern(regexp = "^[A-Z]{3}$") String currency,
-			@RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
-			@RequestParam(required = false) @Pattern(regexp = "^[0-9]{1,9}$") String pageToken) {
+			@RequestParam(defaultValue = "0") @Min(0) int page,
+			@RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+			@RequestParam(required = false) List<String> sort) {
 		var query = new ListAccountsQuery(
 				customerId == null ? null : new CustomerId(customerId),
 				status,
 				accountType,
 				currency,
-				pageSize,
-				pageToken);
+				page,
+				size,
+				parseSort(sort));
 		return ResponseEntity.ok(AccountPageResponse.from(listAccountsInputPort.listAccounts(query)));
 	}
+
+	private static List<AccountSortOrder> parseSort(List<String> sort) {
+		if (sort == null || sort.isEmpty()) {
+			return List.of();
+		}
+
+		return sort.stream()
+				.map(AccountController::parseSortOrder)
+				.toList();
+	}
+
+	private static AccountSortOrder parseSortOrder(String sort) {
+		var parts = sort.split(",", -1);
+		if (parts.length > 2 || parts[0].isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sort parameter: " + sort);
+		}
+
+		var property = SORT_PROPERTIES.get(parts[0]);
+		if (property == null) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort property: " + parts[0]);
+		}
+
+		var direction = AccountSortOrder.Direction.ASC;
+		if (parts.length == 2 && !parts[1].isBlank()) {
+			direction = parseSortDirection(parts[1]);
+		}
+
+		return new AccountSortOrder(property, direction);
+	}
+
+	private static AccountSortOrder.Direction parseSortDirection(String direction) {
+		return switch (direction.toLowerCase(Locale.ROOT)) {
+			case "asc" -> AccountSortOrder.Direction.ASC;
+			case "desc" -> AccountSortOrder.Direction.DESC;
+			default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort direction: " + direction);
+		};
+	}
+
+	private static final Map<String, String> SORT_PROPERTIES = Map.ofEntries(
+			Map.entry("accountId", "id"),
+			Map.entry("customerId", "customerId"),
+			Map.entry("accountNumber", "accountNumber"),
+			Map.entry("accountType", "accountType"),
+			Map.entry("currency", "currency"),
+			Map.entry("status", "status"),
+			Map.entry("balance", "currentBalance"),
+			Map.entry("currentBalance", "currentBalance"),
+			Map.entry("availableBalance", "availableBalance"),
+			Map.entry("createdAt", "createdAt"),
+			Map.entry("updatedAt", "updatedAt"));
 
 	private static final String VALIDATION_PROBLEM_EXAMPLE = """
 			{

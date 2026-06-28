@@ -106,15 +106,19 @@ class AccountServiceTests {
 				AccountStatus.ACTIVE,
 				AccountType.SAVINGS,
 				"USD",
+				0,
 				20,
-				null));
+				List.of()));
 
 		assertThat(page.items()).singleElement().satisfies(profile -> {
 			assertThat(profile.accountId()).isEqualTo(account.id().value().toString());
 			assertThat(profile.customerId()).isEqualTo(customerId.value().toString());
 		});
-		assertThat(page.nextPageToken()).isNull();
+		assertThat(page.pageNumber()).isZero();
 		assertThat(page.pageSize()).isEqualTo(20);
+		assertThat(page.totalElements()).isEqualTo(1);
+		assertThat(page.totalPages()).isEqualTo(1);
+		assertThat(page.last()).isTrue();
 	}
 
 	private static final class InMemoryAccountRepository implements AccountRepository {
@@ -149,7 +153,13 @@ class AccountServiceTests {
 					.filter(account -> criteria.accountType() == null || account.type().equals(criteria.accountType()))
 					.filter(account -> criteria.currency() == null || account.currency().equals(criteria.currency()))
 					.toList();
-			return new AccountSearchResult(matches, null, criteria.pageSize());
+			return new AccountSearchResult(
+					matches,
+					criteria.pageNumber(),
+					criteria.pageSize(),
+					matches.size(),
+					matches.isEmpty() ? 0 : 1,
+					true);
 		}
 
 		private List<Account> savedAccounts() {

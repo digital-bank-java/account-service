@@ -11,18 +11,30 @@ record AccountPageResponse(
 		@Schema(description = "Returned account page")
 		List<AccountResponse> items,
 
-		@Schema(description = "Token for the next page. Omitted when there are no more results.")
-		String nextPageToken,
+		@Schema(description = "Zero-based page number")
+		int pageNumber,
 
 		@Schema(description = "Effective page size")
-		int pageSize) {
+		int pageSize,
+
+		@Schema(description = "Total number of matching accounts")
+		long totalElements,
+
+		@Schema(description = "Total number of pages")
+		int totalPages,
+
+		@Schema(description = "Whether this is the last page")
+		boolean last) {
 
 	static AccountPageResponse from(PaginatedAccountProfiles page) {
 		return new AccountPageResponse(
 				page.items().stream()
 						.map(AccountResponse::from)
 						.toList(),
-				page.nextPageToken(),
-				page.pageSize());
+				page.pageNumber(),
+				page.pageSize(),
+				page.totalElements(),
+				page.totalPages(),
+				page.last());
 	}
 }

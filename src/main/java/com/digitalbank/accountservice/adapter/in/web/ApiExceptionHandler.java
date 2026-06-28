@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.digitalbank.accountservice.domain.exception.AccountNotFoundException;
 
@@ -63,5 +64,13 @@ class ApiExceptionHandler {
 		problem.setType(URI.create("https://digital-bank-java.local/problems/validation-error"));
 		problem.setProperty("errors", errors);
 		return ResponseEntity.badRequest().body(problem);
+	}
+
+	@ExceptionHandler(ResponseStatusException.class)
+	ResponseEntity<ProblemDetail> handleResponseStatus(ResponseStatusException exception) {
+		var problem = ProblemDetail.forStatusAndDetail(exception.getStatusCode(), exception.getReason());
+		problem.setTitle("Invalid request");
+		problem.setType(URI.create("https://digital-bank-java.local/problems/validation-error"));
+		return ResponseEntity.status(exception.getStatusCode()).body(problem);
 	}
 }

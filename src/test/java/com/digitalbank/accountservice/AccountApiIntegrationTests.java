@@ -98,12 +98,16 @@ class AccountApiIntegrationTests {
 		assertContentType(response, "application/json");
 		var page = objectMapper.readTree(response.body());
 		assertThat(page.path("items")).isEmpty();
-		assertThat(page.path("nextPageToken").isMissingNode() || page.path("nextPageToken").isNull()).isTrue();
+		assertThat(page.has("nextPageToken")).isFalse();
+		assertThat(page.path("pageNumber").asInt()).isZero();
 		assertThat(page.path("pageSize").asInt()).isEqualTo(20);
+		assertThat(page.path("totalElements").asLong()).isZero();
+		assertThat(page.path("totalPages").asInt()).isZero();
+		assertThat(page.path("last").asBoolean()).isTrue();
 	}
 
 	@Test
-	void returnsFilteredAdminAccountPageWithNextPageToken() throws Exception {
+	void returnsFilteredAdminAccountPageWithTotals() throws Exception {
 		var customerId = UUID.randomUUID();
 		var otherCustomerId = UUID.randomUUID();
 		var firstOpenResponse = sendJson("POST", "/api/v1/accounts",
@@ -115,7 +119,9 @@ class AccountApiIntegrationTests {
 		var firstAccount = objectMapper.readTree(firstOpenResponse.body());
 		var secondAccount = objectMapper.readTree(secondOpenResponse.body());
 
-		var firstPageResponse = send("GET", "/admin/v1/accounts?customerId=" + customerId + "&currency=AED&pageSize=1");
+		var firstPageResponse = send("GET",
+				"/admin/v1/accounts?customerId=" + customerId + "&currency=AED&page=0&size=1"
+						+ "&sort=balance,desc&sort=createdAt,asc");
 
 		assertThat(firstPageResponse.statusCode()).isEqualTo(200);
 		assertContentType(firstPageResponse, "application/json");
@@ -123,17 +129,27 @@ class AccountApiIntegrationTests {
 		assertThat(firstPage.path("items")).hasSize(1);
 		assertThat(firstPage.path("items").findValuesAsText("customerId")).containsOnly(customerId.toString());
 		assertThat(firstPage.path("items").findValuesAsText("currency")).containsOnly("AED");
-		assertThat(firstPage.path("nextPageToken").asText()).isEqualTo("1");
+		assertThat(firstPage.has("nextPageToken")).isFalse();
+		assertThat(firstPage.path("pageNumber").asInt()).isZero();
 		assertThat(firstPage.path("pageSize").asInt()).isEqualTo(1);
+		assertThat(firstPage.path("totalElements").asLong()).isEqualTo(2);
+		assertThat(firstPage.path("totalPages").asInt()).isEqualTo(2);
+		assertThat(firstPage.path("last").asBoolean()).isFalse();
 		var firstPageAccountId = firstPage.path("items").get(0).path("accountId").asText();
 
 		var secondPageResponse = send("GET",
-				"/admin/v1/accounts?customerId=" + customerId + "&currency=AED&pageSize=1&pageToken=1");
+				"/admin/v1/accounts?customerId=" + customerId + "&currency=AED&page=1&size=1"
+						+ "&sort=balance,desc&sort=createdAt,asc");
 
 		assertThat(secondPageResponse.statusCode()).isEqualTo(200);
 		var secondPage = objectMapper.readTree(secondPageResponse.body());
 		assertThat(secondPage.path("items")).hasSize(1);
-		assertThat(secondPage.path("nextPageToken").isMissingNode() || secondPage.path("nextPageToken").isNull()).isTrue();
+		assertThat(secondPage.has("nextPageToken")).isFalse();
+		assertThat(secondPage.path("pageNumber").asInt()).isEqualTo(1);
+		assertThat(secondPage.path("pageSize").asInt()).isEqualTo(1);
+		assertThat(secondPage.path("totalElements").asLong()).isEqualTo(2);
+		assertThat(secondPage.path("totalPages").asInt()).isEqualTo(2);
+		assertThat(secondPage.path("last").asBoolean()).isTrue();
 		var secondPageAccountId = secondPage.path("items").get(0).path("accountId").asText();
 		assertThat(firstPageAccountId).isNotEqualTo(secondPageAccountId);
 		assertThat(List.of(firstPageAccountId, secondPageAccountId))
@@ -142,7 +158,18 @@ class AccountApiIntegrationTests {
 
 	@Test
 	void rejectsInvalidAdminAccountPageSize() throws Exception {
-		var response = send("GET", "/admin/v1/accounts?pageSize=101");
+		var response = send("GET", "/admin/v1/accounts?size=101");
+
+		assertThat(response.statusCode()).isEqualTo(400);
+		assertContentType(response, "application/problem+json");
+		var problem = objectMapper.readTree(response.body());
+		assertThat(problem.path("type").asText()).isEqualTo("https://digital-bank-java.local/problems/validation-error");
+		assertThat(problem.path("title").asText()).isEqualTo("Invalid request");
+	}
+
+	@Test
+	void rejectsUnsupportedAdminAccountSortField() throws Exception {
+		var response = send("GET", "/admin/v1/accounts?sort=unsupportedField,asc");
 
 		assertThat(response.statusCode()).isEqualTo(400);
 		assertContentType(response, "application/problem+json");

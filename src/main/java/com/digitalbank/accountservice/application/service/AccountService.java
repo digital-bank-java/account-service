@@ -95,19 +95,19 @@ public class AccountService
 				query.status(),
 				query.accountType(),
 				query.currency(),
+				query.pageNumber(),
 				query.pageSize(),
-				parsePageNumber(query.pageToken())));
+				query.sort()));
 		var items = result.accounts().stream()
 				.map(AccountProfile::fromAccount)
 				.toList();
 
-		return new PaginatedAccountProfiles(items, result.nextPageToken(), result.pageSize());
-	}
-
-	private static int parsePageNumber(String pageToken) {
-		if (pageToken == null || pageToken.isBlank()) {
-			return 0;
-		}
-		return Integer.parseInt(pageToken);
+		return new PaginatedAccountProfiles(
+				items,
+				result.pageNumber(),
+				result.pageSize(),
+				result.totalElements(),
+				result.totalPages(),
+				result.last());
 	}
 }

@@ -6,6 +6,9 @@ import com.digitalbank.accountservice.domain.model.Account;
 
 public record AccountSearchResult(
 		List<Account> accounts,
-		String nextPageToken,
-		int pageSize) {
+		int pageNumber,
+		int pageSize,
+		long totalElements,
+		int totalPages,
+		boolean last) {
 }

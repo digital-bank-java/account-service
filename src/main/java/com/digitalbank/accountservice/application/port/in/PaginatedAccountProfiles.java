@@ -4,6 +4,9 @@ import java.util.List;
 
 public record PaginatedAccountProfiles(
 		List<AccountProfile> items,
-		String nextPageToken,
-		int pageSize) {
+		int pageNumber,
+		int pageSize,
+		long totalElements,
+		int totalPages,
+		boolean last) {
 }
