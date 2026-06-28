@@ -25,6 +25,7 @@ import com.digitalbank.accountservice.domain.model.CustomerId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -55,10 +56,18 @@ class AccountController {
 			schema = @Schema(implementation = AccountResponse.class)))
 	@ApiResponse(responseCode = "400", description = "Invalid request", content = @Content(
 			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-			schema = @Schema(implementation = ProblemDetail.class)))
+			schema = @Schema(implementation = ProblemDetail.class),
+			examples = @ExampleObject(
+					name = "validation-error",
+					summary = "Validation failure",
+					value = VALIDATION_PROBLEM_EXAMPLE)))
 	@ApiResponse(responseCode = "409", description = "Account already exists", content = @Content(
 			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-			schema = @Schema(implementation = ProblemDetail.class)))
+			schema = @Schema(implementation = ProblemDetail.class),
+			examples = @ExampleObject(
+					name = "account-conflict",
+					summary = "Duplicate account request",
+					value = ACCOUNT_CONFLICT_PROBLEM_EXAMPLE)))
 	ResponseEntity<AccountResponse> openAccount(@Valid @RequestBody OpenAccountRequest request) {
 		var profile = openAccountInputPort.openAccount(new OpenAccountCommand(
 				new CustomerId(request.customerId()),
@@ -82,7 +91,11 @@ class AccountController {
 			schema = @Schema(implementation = AccountResponse.class)))
 	@ApiResponse(responseCode = "404", description = "Account not found", content = @Content(
 			mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-			schema = @Schema(implementation = ProblemDetail.class)))
+			schema = @Schema(implementation = ProblemDetail.class),
+			examples = @ExampleObject(
+					name = "account-not-found",
+					summary = "Account not found",
+					value = ACCOUNT_NOT_FOUND_PROBLEM_EXAMPLE)))
 	ResponseEntity<AccountResponse> getAccount(@PathVariable UUID accountId) {
 		var profile = getAccountInputPort.getAccount(new AccountId(accountId));
 		return ResponseEntity.ok(AccountResponse.from(profile));
@@ -99,4 +112,39 @@ class AccountController {
 				.toList();
 		return ResponseEntity.ok(accounts);
 	}
+
+	private static final String VALIDATION_PROBLEM_EXAMPLE = """
+			{
+			  "type": "about:blank",
+			  "title": "Invalid request",
+			  "status": 400,
+			  "detail": "Request validation failed",
+			  "errors": [
+			    {
+			      "field": "currency",
+			      "message": "must match ISO 4217 uppercase format"
+			    }
+			  ]
+			}
+			""";
+
+	private static final String ACCOUNT_CONFLICT_PROBLEM_EXAMPLE = """
+			{
+			  "type": "about:blank",
+			  "title": "Account conflict",
+			  "status": 409,
+			  "detail": "Account opening request already exists",
+			  "openingRequestId": "open-account-request-001"
+			}
+			""";
+
+	private static final String ACCOUNT_NOT_FOUND_PROBLEM_EXAMPLE = """
+			{
+			  "type": "about:blank",
+			  "title": "Account not found",
+			  "status": 404,
+			  "detail": "Account was not found",
+			  "accountId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+			}
+			""";
 }
