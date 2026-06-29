@@ -179,6 +179,28 @@ class AccountApiIntegrationTests {
 	}
 
 	@Test
+	void returnsAdminAccountPageWithSingleDescendingSortParameter() throws Exception {
+		var response = send("GET", "/admin/v1/accounts?status=ACTIVE&page=0&size=20&sort=createdAt,desc");
+
+		assertThat(response.statusCode()).isEqualTo(200);
+		assertContentType(response, "application/json");
+		var page = objectMapper.readTree(response.body());
+		assertThat(page.path("pageNumber").asInt()).isZero();
+		assertThat(page.path("pageSize").asInt()).isEqualTo(20);
+	}
+
+	@Test
+	void rejectsUnsupportedAdminAccountSortDirection() throws Exception {
+		var response = send("GET", "/admin/v1/accounts?sort=createdAt,sideways");
+
+		assertThat(response.statusCode()).isEqualTo(400);
+		assertContentType(response, "application/problem+json");
+		var problem = objectMapper.readTree(response.body());
+		assertThat(problem.path("type").asText()).isEqualTo("https://digital-bank-java.local/problems/validation-error");
+		assertThat(problem.path("title").asText()).isEqualTo("Invalid request");
+	}
+
+	@Test
 	void rejectsInvalidOpenAccountRequest() throws Exception {
 		var response = sendJson("POST", "/api/v1/accounts", """
 				{
