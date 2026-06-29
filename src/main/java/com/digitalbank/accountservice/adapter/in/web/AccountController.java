@@ -1,6 +1,7 @@
 package com.digitalbank.accountservice.adapter.in.web;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -164,28 +165,41 @@ class AccountController {
 			return List.of();
 		}
 
-		return sort.stream()
-				.map(AccountController::parseSortOrder)
+		var tokens = sort.stream()
+				.flatMap(value -> List.of(value.split(",", -1)).stream())
+				.map(String::trim)
+				.filter(token -> !token.isEmpty())
 				.toList();
+
+		var orders = new ArrayList<AccountSortOrder>();
+		for (var index = 0; index < tokens.size(); index++) {
+			var propertyToken = tokens.get(index);
+			var property = SORT_PROPERTIES.get(propertyToken);
+			if (property == null) {
+				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort property: " + propertyToken);
+			}
+
+			var direction = AccountSortOrder.Direction.ASC;
+			if (index + 1 < tokens.size()) {
+				var nextToken = tokens.get(index + 1);
+				if (isSortDirection(nextToken)) {
+					direction = parseSortDirection(nextToken);
+					index++;
+				}
+				else if (!SORT_PROPERTIES.containsKey(nextToken)) {
+					throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort direction: " + nextToken);
+				}
+			}
+
+			orders.add(new AccountSortOrder(property, direction));
+		}
+
+		return orders;
 	}
 
-	private static AccountSortOrder parseSortOrder(String sort) {
-		var parts = sort.split(",", -1);
-		if (parts.length > 2 || parts[0].isBlank()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sort parameter: " + sort);
-		}
-
-		var property = SORT_PROPERTIES.get(parts[0]);
-		if (property == null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported sort property: " + parts[0]);
-		}
-
-		var direction = AccountSortOrder.Direction.ASC;
-		if (parts.length == 2 && !parts[1].isBlank()) {
-			direction = parseSortDirection(parts[1]);
-		}
-
-		return new AccountSortOrder(property, direction);
+	private static boolean isSortDirection(String direction) {
+		var normalizedDirection = direction.toLowerCase(Locale.ROOT);
+		return "asc".equals(normalizedDirection) || "desc".equals(normalizedDirection);
 	}
 
 	private static AccountSortOrder.Direction parseSortDirection(String direction) {
