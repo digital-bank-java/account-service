@@ -17,7 +17,7 @@ Account lifecycle and account lookup service for the Digital Bank Java platform.
 - Public balance mutation APIs.
 - Storing secrets or environment-specific configuration in the application image.
 
-The current bootstrap establishes the deployable service boundary. Account domain logic and persistence are introduced in follow-up tasks.
+The balance mutation model is documented in [Account Balance And Events](docs/balance-and-events.md).
 
 ## Runtime Configuration
 
