@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class AccountApiIntegrationTests {
+class AccountApiIT {
 
 	private static final AtomicInteger ACCOUNT_SEQUENCE = new AtomicInteger(1);
 

@@ -28,7 +28,7 @@ import com.digitalbank.accountservice.domain.model.CustomerId;
 
 @SpringBootTest
 @Testcontainers
-class AccountPersistenceIntegrationTests {
+class AccountPersistenceIT {
 
 	private static final Instant FIXED_NOW = Instant.parse("2026-01-01T10:15:30Z");
 
