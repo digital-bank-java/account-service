@@ -4,5 +4,5 @@ import com.digitalbank.accountservice.domain.model.AccountId;
 
 public interface GetAccountInputPort {
 
-	AccountProfile getAccount(AccountId accountId);
+    AccountProfile getAccount(AccountId accountId);
 }

@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Maven test phases
+  verify:
+    name: Maven verify quality gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -30,11 +30,8 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run unit tests
-        run: ./mvnw --batch-mode --no-transfer-progress test
-
-      - name: Run integration tests
-        run: ./mvnw --batch-mode --no-transfer-progress verify -DskipUnitTests=true
+      - name: Run Maven verify
+        run: ./mvnw --batch-mode --no-transfer-progress verify
 
   helm:
     name: Helm validation
@@ -65,7 +62,7 @@ jobs:
   container:
     name: Container build and smoke test
     needs:
-      - test
+      - verify
       - helm
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -27,11 +27,13 @@
 		<tag />
 		<url />
 	</scm>
-		<properties>
-			<java.version>21</java.version>
-			<skipUnitTests>false</skipUnitTests>
-			<spring-cloud.version>2025.1.2</spring-cloud.version>
-		</properties>
+	<properties>
+		<java.version>21</java.version>
+		<jacoco.version>0.8.15</jacoco.version>
+		<skipUnitTests>false</skipUnitTests>
+		<spotless.version>3.8.0</spotless.version>
+		<spring-cloud.version>2025.1.2</spring-cloud.version>
+	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -127,13 +129,66 @@
 
 		<build>
 			<plugins>
-				<plugin>
-					<groupId>org.springframework.boot</groupId>
-					<artifactId>spring-boot-maven-plugin</artifactId>
-				</plugin>
-				<plugin>
-					<groupId>org.apache.maven.plugins</groupId>
-					<artifactId>maven-surefire-plugin</artifactId>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>com.diffplug.spotless</groupId>
+				<artifactId>spotless-maven-plugin</artifactId>
+				<version>${spotless.version}</version>
+				<configuration>
+					<java>
+						<removeUnusedImports />
+						<formatAnnotations />
+						<palantirJavaFormat />
+					</java>
+					<formats>
+						<format>
+							<includes>
+								<include>*.md</include>
+								<include>.dockerignore</include>
+								<include>.gitattributes</include>
+								<include>.gitignore</include>
+							</includes>
+							<trimTrailingWhitespace />
+							<endWithNewline />
+						</format>
+					</formats>
+				</configuration>
+				<executions>
+					<execution>
+						<id>spotless-check</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<executions>
+					<execution>
+						<id>jacoco-prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>jacoco-report</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
 					<configuration>
 						<skipTests>${skipUnitTests}</skipTests>
 						<includes>
