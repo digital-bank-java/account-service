@@ -8,7 +8,7 @@ import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
 
-class AccountTests {
+class AccountTest {
 
 	private static final Instant NOW = Instant.parse("2026-01-01T10:15:30Z");
 

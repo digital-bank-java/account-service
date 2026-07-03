@@ -21,7 +21,7 @@ import com.digitalbank.accountservice.domain.model.AccountStatus;
 import com.digitalbank.accountservice.domain.model.AccountType;
 import com.digitalbank.accountservice.domain.model.CustomerId;
 
-class AccountServiceTests {
+class AccountServiceTest {
 
 	private final InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
 	private final Clock clock = Clock.fixed(Instant.parse("2026-01-01T10:15:30Z"), ZoneOffset.UTC);

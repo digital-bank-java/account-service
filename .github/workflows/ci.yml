@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   test:
-    name: Maven verification
+    name: Maven test phases
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -30,8 +30,11 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Verify application
-        run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Run unit tests
+        run: ./mvnw --batch-mode --no-transfer-progress test
+
+      - name: Run integration tests
+        run: ./mvnw --batch-mode --no-transfer-progress verify -DskipUnitTests=true
 
   helm:
     name: Helm validation
