@@ -78,7 +78,7 @@ Build the image:
 
 ```bash
 docker build \
-  --tag digital-bank-java/account-service:0.0.1 \
+  --tag digital-bank-java/account-service:0.0.2 \
   .
 ```
 
@@ -90,7 +90,7 @@ docker run --rm \
   --publish 8082:8082 \
   --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
   --env SPRING_PROFILES_ACTIVE=local \
-  digital-bank-java/account-service:0.0.1
+  digital-bank-java/account-service:0.0.2
 ```
 
 The runtime image uses numeric non-root user and group `10001:10001`.
