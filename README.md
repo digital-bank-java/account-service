@@ -82,7 +82,7 @@ Build the image:
 
 ```bash
 docker build \
-  --tag digital-bank-java/account-service:0.0.2 \
+  --tag digital-bank-java/account-service:0.0.3 \
   .
 ```
 
@@ -94,7 +94,7 @@ docker run --rm \
   --publish 8082:8082 \
   --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
   --env SPRING_PROFILES_ACTIVE=sit \
-  digital-bank-java/account-service:0.0.2
+  digital-bank-java/account-service:0.0.3
 ```
 
 Account Service is database-backed. When running it in Docker for debugging, also provide the temporary SIT datasource variables described in the shared workstation procedure, using `host.docker.internal` for the forwarded PostgreSQL host.

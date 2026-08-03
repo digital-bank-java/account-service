@@ -257,6 +257,10 @@ class AccountApiIT {
 		assertThat(response.statusCode()).isEqualTo(200);
 		assertContentType(response, "application/json");
 		var openApi = objectMapper.readTree(response.body());
+		assertThat(openApi.path("info").path("title").asText()).isEqualTo("Digital Bank Account Service API");
+		assertThat(openApi.path("info").path("description").asText())
+				.isEqualTo("Account lifecycle and account lookup APIs for the Digital Bank Java platform.");
+		assertThat(openApi.path("info").path("version").asText()).isEqualTo("1.0.0");
 		assertThat(openApi.path("paths").has("/api/v1/accounts")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/accounts/{accountId}")).isTrue();
 		assertThat(openApi.path("paths").has("/api/v1/customers/{customerId}/accounts")).isTrue();
