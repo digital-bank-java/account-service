@@ -58,9 +58,13 @@ Run the complete Maven test suite from the repository root:
 
 Tests disable the external Config Server dependency so the build remains deterministic.
 
-## Run Locally
+## Run From A Workstation For Debugging
 
-Start Config Server on port `8888`, then start Account Service:
+SIT is the supported lowest runtime environment. A workstation JVM is only a temporary debugging process connected to forwarded SIT dependencies; it is not a separate `local` profile or deployment environment.
+
+Follow the shared [workstation debugging procedure](https://github.com/digital-bank-java/.github/blob/main/docs/workstation-debugging-against-sit.md). It covers scaling this deployment to zero, forwarding Config Server and PostgreSQL, supplying temporary synthetic SIT credentials, and restoring the deployment after debugging.
+
+After exporting the documented overrides, start Account Service:
 
 ```bash
 ./mvnw spring-boot:run
@@ -89,9 +93,11 @@ docker run --rm \
   --name digital-bank-java-account-service \
   --publish 8082:8082 \
   --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
-  --env SPRING_PROFILES_ACTIVE=local \
+  --env SPRING_PROFILES_ACTIVE=sit \
   digital-bank-java/account-service:0.0.2
 ```
+
+Account Service is database-backed. When running it in Docker for debugging, also provide the temporary SIT datasource variables described in the shared workstation procedure, using `host.docker.internal` for the forwarded PostgreSQL host.
 
 The runtime image uses numeric non-root user and group `10001:10001`.
 
