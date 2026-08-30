@@ -29,4 +29,10 @@ class PostgresAccountReservationRepository implements AccountReservationReposito
 		return AccountReservationJpaMapper.toView(
 				repository.saveAndFlush(AccountReservationJpaMapper.toEntity(command, account, now)));
 	}
+
+	@Override
+	public ReservationView save(ReservationView reservation) {
+		return AccountReservationJpaMapper.toView(
+				repository.saveAndFlush(AccountReservationJpaMapper.toEntity(reservation)));
+	}
 }

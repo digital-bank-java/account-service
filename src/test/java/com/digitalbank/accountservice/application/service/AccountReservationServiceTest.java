@@ -257,6 +257,13 @@ class AccountReservationServiceTest {
 			return reservation;
 		}
 
+		@Override
+		public ReservationView save(ReservationView reservation) {
+			reservations.removeIf(existing -> existing.reservationId().equals(reservation.reservationId()));
+			reservations.add(reservation);
+			return reservation;
+		}
+
 		List<ReservationView> savedReservations() {
 			return List.copyOf(reservations);
 		}

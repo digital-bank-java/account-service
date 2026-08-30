@@ -321,6 +321,14 @@ class AccountPersistenceIT {
 			return delegate.save(command, account, now);
 		}
 
+		@Override
+		public ReservationView save(ReservationView reservation) {
+			if (failNextSave.compareAndSet(true, false)) {
+				throw new TestReservationPersistenceException();
+			}
+			return delegate.save(reservation);
+		}
+
 		void failNextSave() {
 			failNextSave.set(true);
 		}
