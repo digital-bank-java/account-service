@@ -271,7 +271,7 @@ class AccountLedgerOutcomeServiceTest {
 			reservations.add(reservation);
 			return reservation;
 		}
- 	}
+	}
 
 	private static final class InMemoryAccountInboxEventRepository implements AccountInboxEventRepository {
 
