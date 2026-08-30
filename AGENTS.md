@@ -12,6 +12,7 @@ It models accounts as banking resources but does not directly own final financia
 - retrieve one account
 - list accounts for admin/internal query use
 - persist account state in PostgreSQL
+- apply transport-neutral ledger posting outcomes to persisted reservations
 
 ## Current Non-Responsibilities
 
@@ -19,6 +20,7 @@ It models accounts as banking resources but does not directly own final financia
 - ledger posting
 - transaction saga orchestration
 - payment execution
+- Kafka transport adapters for ledger posting events until the governed contract is merged
 
 ## Architecture
 
@@ -49,6 +51,7 @@ helm lint helm --strict
 
 - Balance correctness should eventually be driven by transaction and ledger workflows.
 - Reservation, posting, and completion flows should be designed with idempotency and optimistic locking in mind.
+- Ledger outcomes must update the account, reservation, and consumed-event record in one transaction.
 - Public customer-facing APIs should not directly post balance changes.
 
 ## Deployment Notes
