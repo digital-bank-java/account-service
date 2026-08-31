@@ -32,11 +32,14 @@ import com.digitalbank.accountservice.application.port.out.AccountInboxEventRepo
 import com.digitalbank.accountservice.application.port.out.AccountReservationRepository;
 import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcome;
 import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcomeCommand;
+import com.digitalbank.accountservice.application.port.in.GovernedLedgerPostingEvent;
 import com.digitalbank.accountservice.application.port.in.ReservationView;
 import com.digitalbank.accountservice.application.port.in.ReserveFundsCommand;
 import com.digitalbank.accountservice.application.service.AccountService;
 import com.digitalbank.accountservice.application.service.AccountLedgerOutcomeService;
 import com.digitalbank.accountservice.application.service.AccountReservationService;
+import com.digitalbank.accountservice.application.service.LedgerPostingEventMapper;
+import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEventException;
 import com.digitalbank.accountservice.domain.exception.InsufficientAvailableBalanceException;
 import com.digitalbank.accountservice.domain.exception.OptimisticLockConflictException;
 import com.digitalbank.accountservice.domain.model.Account;
@@ -72,6 +75,9 @@ class AccountPersistenceIT {
 
 	@Autowired
 	private AccountLedgerOutcomeService ledgerOutcomeService;
+
+	@Autowired
+	private LedgerPostingEventMapper ledgerPostingEventMapper;
 
 	@Autowired
 	private TestAccountInboxEventRepository testInboxEventRepository;
@@ -274,6 +280,30 @@ class AccountPersistenceIT {
 	}
 
 	@Test
+	void commitsValidGovernedCompletionAndRejectsInvalidCurrencyWithoutMutation() {
+		var account = fundedAccount("ledger-kafka-mapper");
+		var reservation = reservationService.reserve(reservationCommand(account, "ledger-kafka-mapper-request", "25.00"));
+		var validEvent = completedEvent(account, reservation, "AED");
+
+		var result = ledgerOutcomeService.handle(ledgerPostingEventMapper.toCommand(validEvent));
+
+		assertThat(result.reservationStatus()).isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.COMMITTED);
+		assertThat(accountService.findById(account.id()).orElseThrow().currentBalance()).isEqualByComparingTo("75.00");
+
+		var invalidAccount = fundedAccount("ledger-kafka-invalid");
+		var invalidReservation = reservationService.reserve(reservationCommand(
+				invalidAccount, "ledger-kafka-invalid-request", "25.00"));
+		var invalidEvent = completedEvent(invalidAccount, invalidReservation, "USD");
+
+		assertThatThrownBy(() -> ledgerPostingEventMapper.toCommand(invalidEvent))
+				.isInstanceOf(InvalidLedgerPostingEventException.class);
+		assertThat(accountService.findById(invalidAccount.id()).orElseThrow().currentBalance()).isEqualByComparingTo("100.00");
+		assertThat(reservationRepository.findByReservationRequestId(invalidReservation.reservationRequestId()).orElseThrow().status())
+				.isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.ACTIVE);
+		assertThat(testInboxEventRepository.findByEventId(invalidEvent.metadata().eventId().toString())).isEmpty();
+	}
+
+	@Test
 	void persistsFailureAndAppendOnlyReversalOutcome() {
 		var account = fundedAccount("ledger-reversal");
 		var reservation = reservationService.reserve(reservationCommand(account, "ledger-reversal-request", "25.00"));
@@ -357,6 +387,26 @@ class AccountPersistenceIT {
 			Thread.currentThread().interrupt();
 			return exception;
 		}
+	}
+
+	private static GovernedLedgerPostingEvent.Completed completedEvent(
+			Account account,
+			ReservationView reservation,
+			String currency) {
+		var postingId = UUID.randomUUID();
+		return new GovernedLedgerPostingEvent.Completed(
+				new GovernedLedgerPostingEvent.Metadata(
+						UUID.randomUUID(), reservation.correlationId(), reservation.causationId(), "ledger-service", "1.0.0", FIXED_NOW),
+				postingId,
+				reservation.correlationId(),
+				reservation.reservationRequestId(),
+				postingId,
+				"posting-request-" + postingId,
+				null,
+				currency,
+				java.util.List.of(
+						new GovernedLedgerPostingEvent.Line(account.id().value(), "DEBIT", "25.00"),
+						new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), "CREDIT", "25.00")));
 	}
 
 	private Account fundedAccount(String label) {

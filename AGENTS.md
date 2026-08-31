@@ -20,7 +20,7 @@ It models accounts as banking resources but does not directly own final financia
 - ledger posting
 - transaction saga orchestration
 - payment execution
-- Kafka transport adapters for ledger posting events until the governed contract is merged
+- Kafka inbound consumption of governed Ledger posting outcome events
 
 ## Architecture
 

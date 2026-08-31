@@ -13,7 +13,15 @@ Account lifecycle and account lookup service for the Digital Bank Java platform.
 
 Account Service exposes a transport-neutral application input boundary for ledger posting outcomes. It commits an active reservation on `COMPLETED`, releases it on `FAILED`, and applies the inverse projection on `REVERSED`. The account, currency, and amount are loaded from the persisted reservation; they are not accepted from the outcome input.
 
-The outcome handler records consumed event identity in the database with the reservation transition, so duplicate deliveries are replayed without applying a balance change twice. No Kafka listener or public balance mutation endpoint is included until the governed event contract is available from `.github#137` and `ledger-service#14`.
+The outcome handler records consumed event identity in the database with the reservation transition, so duplicate deliveries are replayed without applying a balance change twice. It does not expose a public balance mutation endpoint.
+
+## Governed Ledger Kafka Inbound Adapter
+
+When `ACCOUNT_LEDGER_KAFKA_ENABLED=true`, Account Service consumes only the governed `LedgerPostingCompleted.v1` and `LedgerPostingFailed.v1` topics. It requires and cross-checks the `event-id`, `correlation-id`, `causation-id`, `producer`, `schema-version`, and `occurred-at` headers against the payload; only `ledger-service` producer events using schema `1.0.0` are accepted.
+
+Kafka records are keyed by the governed `aggregateId`. Ordering applies only to one key in one topic, so Account Service treats delivery as at least once and retains the existing PostgreSQL inbox for idempotent replay and conflict detection. A completed event must contain a balanced debit/credit posting with one debit that matches the persisted reservation account, currency, and decimal-string amount. A completed event containing `reversalOfLedgerEntryId` uses the existing reversed-outcome behavior. Failed events carry no account, currency, amount, or line fields in the governed contract and use `postingRequestId` as the posting identity.
+
+The listener is disabled by default. SIT Helm values explicitly configure the Kafka bootstrap address, topics, consumer group, retry attempts, and retry delay. Invalid, untrusted, unsupported, and inbox-conflict records do not mutate account state and are sent directly to the source topic's durable `.dlq` topic. Transient persistence or ordering failures use bounded retry before the same DLQ recovery. Operators inspect the original event and exception metadata in the DLQ, correct the cause where necessary, then explicitly replay the original record. Replay preserves `event-id`, so the database inbox makes a successful prior delivery safe.
 
 ## Non-Responsibilities
 

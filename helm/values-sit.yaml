@@ -1,3 +1,7 @@
 runtime:
   profile: sit
   configServerUrl: http://config-server:8888
+
+ledgerKafka:
+  enabled: true
+  bootstrapServers: kafka.digital-bank-sit.svc.cluster.local:9092

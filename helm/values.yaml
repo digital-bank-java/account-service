@@ -17,6 +17,15 @@ database:
   usernameKey: POSTGRES_USER
   passwordKey: POSTGRES_PASSWORD
 
+ledgerKafka:
+  enabled: false
+  bootstrapServers: ""
+  completedTopic: ledger.posting.completed.v1
+  failedTopic: ledger.posting.failed.v1
+  groupId: account-service-ledger-outcomes-v1
+  retryAttempts: 3
+  retryDelayMs: 1000
+
 service:
   type: ClusterIP
   port: 8082
