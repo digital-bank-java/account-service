@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
@@ -16,6 +17,7 @@ import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEvent
 import com.digitalbank.accountservice.domain.exception.LedgerPostingOutcomeConflictException;
 
 @Configuration
+@EnableKafka
 @EnableConfigurationProperties(LedgerKafkaProperties.class)
 @ConditionalOnProperty(prefix = "account.ledger.kafka", name = "enabled", havingValue = "true")
 public class LedgerKafkaConfiguration {
@@ -44,9 +46,11 @@ public class LedgerKafkaConfiguration {
 	@Bean
 	ConcurrentKafkaListenerContainerFactory<String, String> ledgerKafkaListenerContainerFactory(
 			ConsumerFactory<String, String> consumerFactory,
-			DefaultErrorHandler ledgerKafkaErrorHandler) {
+			DefaultErrorHandler ledgerKafkaErrorHandler,
+			LedgerKafkaProperties properties) {
 		var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
 		factory.setConsumerFactory(consumerFactory);
+		factory.setAutoStartup(properties.isAutoStartup());
 		factory.getContainerProperties().setAckMode(org.springframework.kafka.listener.ContainerProperties.AckMode.RECORD);
 		factory.setCommonErrorHandler(ledgerKafkaErrorHandler);
 		return factory;

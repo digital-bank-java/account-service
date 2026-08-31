@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class LedgerKafkaProperties {
 
 	private boolean enabled;
+	private boolean autoStartup = true;
 	private String completedTopic;
 	private String failedTopic;
 	private String groupId;
@@ -14,6 +15,8 @@ public class LedgerKafkaProperties {
 
 	public boolean isEnabled() { return enabled; }
 	public void setEnabled(boolean enabled) { this.enabled = enabled; }
+	public boolean isAutoStartup() { return autoStartup; }
+	public void setAutoStartup(boolean autoStartup) { this.autoStartup = autoStartup; }
 	public String getCompletedTopic() { return completedTopic; }
 	public void setCompletedTopic(String completedTopic) { this.completedTopic = completedTopic; }
 	public String getFailedTopic() { return failedTopic; }
