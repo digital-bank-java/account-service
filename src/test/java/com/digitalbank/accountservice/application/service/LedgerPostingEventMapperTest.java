@@ -1,6 +1,7 @@
 package com.digitalbank.accountservice.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
@@ -80,6 +82,24 @@ class LedgerPostingEventMapperTest {
 	}
 
 	@Test
+	void mapsReversalCompletedEventWithMatchingReservedCreditLine() {
+		var eventId = UUID.fromString("a1bbbc71-60e6-4a15-b020-f227c54eb80e");
+		var postingId = UUID.fromString("72da40ad-55e6-4be0-a7d5-9046dd3e331c");
+		var originalPostingId = UUID.fromString("83c5bb71-f59a-4f4c-8a6d-b89cbb6a8bb8");
+		var command = new AtomicReference<LedgerPostingOutcomeCommand>();
+
+		assertThatCode(() -> command.set(mapper.toCommand(reversalEvent(eventId, postingId, originalPostingId, "CREDIT"))))
+				.doesNotThrowAnyException();
+
+		assertThat(command.get()).isEqualTo(new LedgerPostingOutcomeCommand(
+				eventId.toString(),
+				postingId.toString(),
+				RESERVATION.reservationRequestId(),
+				LedgerPostingOutcome.REVERSED,
+				originalPostingId.toString()));
+	}
+
+	@Test
 	void rejectsCompletedEventWithAmountBeyondGovernedScale() {
 		assertThatThrownBy(() -> mapper.toCommand(completedEvent(
 				UUID.randomUUID(), UUID.randomUUID(), "125.50000")))
@@ -124,6 +144,13 @@ class LedgerPostingEventMapperTest {
 				.isInstanceOf(InvalidLedgerPostingEventException.class);
 	}
 
+	@Test
+	void rejectsReversalCompletedEventWhoseReservedAccountLineIsDebit() {
+		assertThatThrownBy(() -> mapper.toCommand(reversalEvent(
+				UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "DEBIT")))
+				.isInstanceOf(InvalidLedgerPostingEventException.class);
+	}
+
 	private static GovernedLedgerPostingEvent.Completed completedEvent(
 			UUID eventId,
 			UUID postingId,
@@ -146,6 +173,32 @@ class LedgerPostingEventMapperTest {
 				List.of(
 						new GovernedLedgerPostingEvent.Line(ACCOUNT.id().value(), "DEBIT", amount),
 						new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), "CREDIT", amount)));
+	}
+
+	private static GovernedLedgerPostingEvent.Completed reversalEvent(
+			UUID eventId,
+			UUID postingId,
+			UUID originalPostingId,
+			String reservedAccountLineType) {
+		var counterpartyLineType = "DEBIT".equals(reservedAccountLineType) ? "CREDIT" : "DEBIT";
+		return new GovernedLedgerPostingEvent.Completed(
+				new GovernedLedgerPostingEvent.Metadata(
+						eventId,
+						"transfer-58e271cd",
+						"command-63ca8eb6",
+						"ledger-service",
+						"1.0.0",
+						NOW),
+				postingId,
+				"transfer-58e271cd",
+				RESERVATION.reservationRequestId(),
+				postingId,
+				"posting-request-4d93c803",
+				originalPostingId,
+				"USD",
+				List.of(
+						new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), counterpartyLineType, "125.5000"),
+						new GovernedLedgerPostingEvent.Line(ACCOUNT.id().value(), reservedAccountLineType, "125.5000")));
 	}
 
 	private static final class InMemoryReservationRepository implements AccountReservationRepository {

@@ -57,19 +57,23 @@ public class LedgerPostingEventMapper {
 				throw new InvalidLedgerPostingEventException("Ledger line amount must be a positive decimal string with at most four fractional digits");
 			}
 		});
-		var matchingDebits = completed.lines().stream()
+		var isReversal = completed.reversalOfLedgerEntryId() != null;
+		var reservedAccountLineType = isReversal ? "CREDIT" : "DEBIT";
+		var matchingReservedAccountLines = completed.lines().stream()
 				.filter(line -> line.accountId().equals(reservation.accountId().value()))
-				.filter(line -> "DEBIT".equals(line.lineType()))
+				.filter(line -> reservedAccountLineType.equals(line.lineType()))
 				.filter(line -> new java.math.BigDecimal(line.amount()).compareTo(reservation.amount()) == 0)
 				.count();
-		if (matchingDebits != 1) {
-			throw new InvalidLedgerPostingEventException("Completed posting must contain one debit line matching the reservation account and amount");
+		if (matchingReservedAccountLines != 1) {
+			throw new InvalidLedgerPostingEventException(isReversal
+					? "Reversal completed posting must contain one credit line matching the reservation account and amount"
+					: "Completed posting must contain one debit line matching the reservation account and amount");
 		}
 		return new LedgerPostingOutcomeCommand(
 				completed.metadata().eventId().toString(),
 				completed.postingId().toString(),
 				completed.reservationRequestId(),
-				completed.reversalOfLedgerEntryId() == null ? LedgerPostingOutcome.COMPLETED : LedgerPostingOutcome.REVERSED,
-				completed.reversalOfLedgerEntryId() == null ? null : completed.reversalOfLedgerEntryId().toString());
+				isReversal ? LedgerPostingOutcome.REVERSED : LedgerPostingOutcome.COMPLETED,
+				isReversal ? completed.reversalOfLedgerEntryId().toString() : null);
 	}
 }
