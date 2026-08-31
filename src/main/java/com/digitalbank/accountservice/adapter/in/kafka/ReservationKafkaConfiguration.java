@@ -3,6 +3,7 @@ package com.digitalbank.accountservice.adapter.in.kafka;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
@@ -89,6 +90,11 @@ public class ReservationKafkaConfiguration {
 	}
 
 	private static Map<String, Object> common(Environment environment) {
-		var values = new HashMap<String, Object>(); values.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getRequiredProperty("spring.kafka.bootstrap-servers")); return values;
+		var values = new HashMap<String, Object>();
+		values.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getRequiredProperty("spring.kafka.bootstrap-servers"));
+		var securityProtocol = environment.getProperty("spring.kafka.properties[security.protocol]");
+		if (securityProtocol == null) securityProtocol = environment.getProperty("spring.kafka.properties.security.protocol");
+		if (securityProtocol != null) values.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol);
+		return values;
 	}
 }
