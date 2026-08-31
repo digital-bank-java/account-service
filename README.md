@@ -11,17 +11,23 @@ Account lifecycle and account lookup service for the Digital Bank Java platform.
 
 ## Ledger Outcome Boundary
 
-Account Service exposes a transport-neutral application input boundary for ledger posting outcomes. It commits an active reservation on `COMPLETED`, releases it on `FAILED`, and applies the inverse projection on `REVERSED`. The account, currency, and amount are loaded from the persisted reservation; they are not accepted from the outcome input.
+Account Service exposes a transport-neutral application input boundary for ledger posting outcomes. It commits an active reservation on `COMPLETED`, releases it on `FAILED`, and applies the inverse projection on `REVERSED`. New reservations and every ledger-driven monetary transition require an `ACTIVE` account; `SUSPENDED` and `CLOSED` accounts reject them. The account, currency, and amount are loaded from the persisted reservation; they are not accepted from the outcome input.
 
 The outcome handler records consumed event identity in the database with the reservation transition, so duplicate deliveries are replayed without applying a balance change twice. It does not expose a public balance mutation endpoint.
 
+Active reservations are expired by a scheduled transactional sweeper. Each batch locks due rows with PostgreSQL `FOR UPDATE SKIP LOCKED`, restores available balance, and records the terminal `EXPIRED` state. Expiry cleanup runs for every account status because it removes an invalid hold rather than initiating new activity. A `COMPLETED` outcome processed at or after `expiresAt`, including after the sweep, is rejected and cannot debit the account.
+
 ## Governed Ledger Kafka Inbound Adapter
 
-When `ACCOUNT_LEDGER_KAFKA_ENABLED=true`, Account Service consumes only the governed `LedgerPostingCompleted.v1` and `LedgerPostingFailed.v1` topics. It requires and cross-checks the `event-id`, `correlation-id`, `causation-id`, `producer`, `schema-version`, and `occurred-at` headers against the payload; only `ledger-service` producer events using schema `1.0.0` are accepted.
+When `ACCOUNT_LEDGER_KAFKA_ENABLED=true`, Account Service consumes only the governed `LedgerPostingCompleted.v1` and `LedgerPostingFailed.v1` topics. It requires and cross-checks the `event-id`, `correlation-id`, `causation-id`, `producer`, `schema-version`, and `occurred-at` headers against the payload; the expected producer metadata is `ledger-service` and the supported schema is `1.0.0`.
+
+The `producer` header and payload field are semantic metadata, not authentication and not a trust anchor. Production rollout is blocked until the Kafka platform authenticates the Ledger Service client with SASL over TLS or mTLS, encrypts broker traffic, and enforces ACLs that allow the Account Service identity to read only the governed source topics and write only their DLQs. `ACCOUNT_LEDGER_KAFKA_SECURITY_PROTOCOL` configures the Kafka transport protocol; SASL and SSL client properties and all credentials/key material must be supplied through Config Server and the approved secret integration using `spring.kafka.properties`, never committed here. SIT currently uses `PLAINTEXT` and must not be treated as the production security boundary.
 
 Kafka records are keyed by the governed `aggregateId`. Ordering applies only to one key in one topic, so Account Service treats delivery as at least once and retains the existing PostgreSQL inbox for idempotent replay and conflict detection. A completed event must contain a balanced debit/credit posting with one debit that matches the persisted reservation account, currency, and decimal-string amount. A completed event containing `reversalOfLedgerEntryId` uses the existing reversed-outcome behavior. Failed events carry no account, currency, amount, or line fields in the governed contract and use `postingRequestId` as the posting identity.
 
-The listener is disabled by default. SIT Helm values explicitly configure the Kafka bootstrap address, topics, consumer group, retry attempts, and retry delay. Invalid, untrusted, unsupported, and inbox-conflict records do not mutate account state and are sent directly to the source topic's durable `.dlq` topic. Transient persistence or ordering failures use bounded retry before the same DLQ recovery. Operators inspect the original event and exception metadata in the DLQ, correct the cause where necessary, then explicitly replay the original record. Replay preserves `event-id`, so the database inbox makes a successful prior delivery safe.
+The listener is disabled by default. SIT Helm values explicitly configure the Kafka bootstrap address, transport protocol, topics, consumer group, retry attempts, and retry delay. Invalid producer metadata, unsupported schemas, malformed events, expired completions, account-status conflicts, and inbox conflicts do not mutate account state and are sent directly to the source topic's durable `.dlq` topic. Transient persistence or ordering failures use bounded retry before the same DLQ recovery. Operators inspect the original event and exception metadata in the DLQ, correct the cause where necessary, then explicitly replay the original record. Replay preserves `event-id`, so the database inbox makes a successful prior delivery safe.
+
+This repository does not provision a Kafka broker in its Testcontainers integration suite. Production Kafka factories, explicit error classification, parser/listener delegation, and the PostgreSQL outcome boundary are tested here; broker-level publish/consume/DLQ verification remains a deployment or CI smoke-test requirement.
 
 ## Non-Responsibilities
 
@@ -41,6 +47,10 @@ The service is a Spring Cloud Config client. It loads shared, service-specific, 
 | --- | --- | --- |
 | `CONFIG_SERVER_URL` | Config Server base URL | `http://localhost:8888` |
 | `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
+| `ACCOUNT_LEDGER_KAFKA_SECURITY_PROTOCOL` | Kafka client transport protocol; production requires authenticated TLS | `SASL_SSL` |
+| `ACCOUNT_LEDGER_KAFKA_ALLOW_INSECURE_TRANSPORT` | Explicit SIT-only opt-in for `PLAINTEXT`; never enable in production | `false` |
+| `ACCOUNT_RESERVATION_EXPIRY_BATCH_SIZE` | Maximum due holds locked and expired per sweep | `100` |
+| `ACCOUNT_RESERVATION_EXPIRY_SWEEP_DELAY_MS` | Delay between completed expiry sweeps | `30000` |
 
 Secrets must not be committed to this repository or stored in the container image. Kubernetes and AWS environments will supply secrets through their approved secret-management integrations.
 

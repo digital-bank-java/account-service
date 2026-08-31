@@ -14,7 +14,7 @@ public class LedgerPostingEventParser {
 
 	private static final String COMPLETED_EVENT_TYPE = "LedgerPostingCompleted.v1";
 	private static final String FAILED_EVENT_TYPE = "LedgerPostingFailed.v1";
-	private static final String TRUSTED_PRODUCER = "ledger-service";
+	private static final String EXPECTED_PRODUCER = "ledger-service";
 	private static final String SUPPORTED_SCHEMA_VERSION = "1.0.0";
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
@@ -75,7 +75,7 @@ public class LedgerPostingEventParser {
 		var producer = header(headers, "producer");
 		var schemaVersion = header(headers, "schema-version");
 		var occurredAt = Instant.parse(header(headers, "occurred-at"));
-		if (!TRUSTED_PRODUCER.equals(producer) || !SUPPORTED_SCHEMA_VERSION.equals(schemaVersion)
+		if (!EXPECTED_PRODUCER.equals(producer) || !SUPPORTED_SCHEMA_VERSION.equals(schemaVersion)
 				|| !eventId.toString().equals(text(root, "eventId"))
 				|| !correlationId.equals(text(root, "correlationId"))
 				|| !causationId.equals(text(root, "causationId"))

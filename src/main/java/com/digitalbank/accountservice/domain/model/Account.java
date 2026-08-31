@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
 
+import com.digitalbank.accountservice.domain.exception.AccountStatusConflictException;
+
 public record Account(
 		AccountId id,
 		CustomerId customerId,
@@ -74,6 +76,12 @@ public record Account(
 				now,
 				now,
 				null);
+	}
+
+	public void requireActiveForMonetaryOperation(String operation) {
+		if (status != AccountStatus.ACTIVE) {
+			throw new AccountStatusConflictException(id, status, operation);
+		}
 	}
 
 	private static String requireText(String value, String message) {

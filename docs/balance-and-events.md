@@ -27,6 +27,9 @@ The implemented transitions are:
 - `ACTIVE` + `COMPLETED` -> `COMMITTED`, decreasing current balance by the reserved amount.
 - `ACTIVE` + `FAILED` -> `RELEASED`, restoring available balance by the reserved amount.
 - `COMMITTED` + `REVERSED` -> `REVERSED`, restoring current and available balance by the reserved amount.
+- Due `ACTIVE` -> `EXPIRED`, restoring available balance through a scheduled transactional sweeper.
+
+New reservations and ledger-driven monetary outcomes require an `ACTIVE` account. `SUSPENDED` and `CLOSED` accounts reject reserve, complete, fail/release, and reverse operations. Expiry cleanup is the sole lifecycle exception because stale holds must be removed even when an account is not active. Completed outcomes processed at or after reservation expiry are rejected without a debit.
 
 The transition and `account_inbox_events` insert share one database transaction. Event ID and ledger posting correlation replays are explicit no-ops; conflicting payloads and out-of-order reversals are rejected. The final Kafka event schema is intentionally not claimed here and must be mapped by a later adapter after `.github#137` / `ledger-service#14`.
 

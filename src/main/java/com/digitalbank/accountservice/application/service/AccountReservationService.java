@@ -121,6 +121,7 @@ public class AccountReservationService implements ReserveFundsInputPort {
 	}
 
 	private static void validateAccount(Account account, ReserveFundsCommand command) {
+		account.requireActiveForMonetaryOperation("reserve funds");
 		if (!account.currency().equals(command.currency())) {
 			throw new AccountCurrencyMismatchException(command.accountId(), command.currency());
 		}

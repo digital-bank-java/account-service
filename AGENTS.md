@@ -13,6 +13,7 @@ It models accounts as banking resources but does not directly own final financia
 - list accounts for admin/internal query use
 - persist account state in PostgreSQL
 - apply transport-neutral ledger posting outcomes to persisted reservations
+- consume governed Ledger posting outcome events from Kafka
 
 ## Current Non-Responsibilities
 
@@ -20,7 +21,7 @@ It models accounts as banking resources but does not directly own final financia
 - ledger posting
 - transaction saga orchestration
 - payment execution
-- Kafka inbound consumption of governed Ledger posting outcome events
+- Kafka production of Account Service events
 
 ## Architecture
 

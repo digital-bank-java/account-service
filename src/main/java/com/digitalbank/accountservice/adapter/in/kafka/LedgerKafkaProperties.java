@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class LedgerKafkaProperties {
 
 	private boolean enabled;
+	private boolean allowInsecureTransport;
 	private boolean autoStartup = true;
 	private String completedTopic;
 	private String failedTopic;
@@ -15,6 +16,8 @@ public class LedgerKafkaProperties {
 
 	public boolean isEnabled() { return enabled; }
 	public void setEnabled(boolean enabled) { this.enabled = enabled; }
+	public boolean isAllowInsecureTransport() { return allowInsecureTransport; }
+	public void setAllowInsecureTransport(boolean allowInsecureTransport) { this.allowInsecureTransport = allowInsecureTransport; }
 	public boolean isAutoStartup() { return autoStartup; }
 	public void setAutoStartup(boolean autoStartup) { this.autoStartup = autoStartup; }
 	public String getCompletedTopic() { return completedTopic; }

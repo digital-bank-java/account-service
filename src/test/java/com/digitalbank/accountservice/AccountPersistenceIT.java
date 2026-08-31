@@ -38,6 +38,7 @@ import com.digitalbank.accountservice.application.port.in.ReserveFundsCommand;
 import com.digitalbank.accountservice.application.service.AccountService;
 import com.digitalbank.accountservice.application.service.AccountLedgerOutcomeService;
 import com.digitalbank.accountservice.application.service.AccountReservationService;
+import com.digitalbank.accountservice.application.service.AccountReservationExpiryService;
 import com.digitalbank.accountservice.application.service.LedgerPostingEventMapper;
 import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEventException;
 import com.digitalbank.accountservice.domain.exception.InsufficientAvailableBalanceException;
@@ -69,6 +70,9 @@ class AccountPersistenceIT {
 
 	@Autowired
 	private AccountReservationService reservationService;
+
+	@Autowired
+	private AccountReservationExpiryService reservationExpiryService;
 
 	@Autowired
 	private TestAccountReservationRepository testReservationRepository;
@@ -354,6 +358,53 @@ class AccountPersistenceIT {
 	}
 
 	@Test
+	void expiresPersistedHoldAndRejectsLateCompletionWithoutDebiting() {
+		var account = fundedAccount("reservation-expiry");
+		var heldAccount = accountRepository.save(new Account(
+				account.id(),
+				account.customerId(),
+				account.accountNumber(),
+				account.iban(),
+				account.type(),
+				account.currency(),
+				account.status(),
+				account.currentBalance(),
+				new BigDecimal("75.00"),
+				account.openingRequestId(),
+				account.version(),
+				account.createdAt(),
+				account.updatedAt(),
+				account.closedAt()));
+		var command = new ReserveFundsCommand(
+				"reservation-expiry-request",
+				heldAccount.id(),
+				"AED",
+				new BigDecimal("25.00"),
+				"reservation-expiry-correlation",
+				"reservation-expiry-causation",
+				FIXED_NOW.minusSeconds(1));
+		var reservation = reservationRepository.save(command, heldAccount, FIXED_NOW.minusSeconds(900));
+
+		assertThat(reservationExpiryService.expireDueReservations()).isOne();
+
+		assertThat(reservationRepository.findByReservationRequestId(reservation.reservationRequestId()))
+				.hasValueSatisfying(saved -> assertThat(saved.status())
+						.isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.EXPIRED));
+		assertThat(accountService.findById(account.id()).orElseThrow().availableBalance())
+				.isEqualByComparingTo("100.00");
+		assertThatThrownBy(() -> ledgerOutcomeService.handle(new LedgerPostingOutcomeCommand(
+				"reservation-expiry-event",
+				"reservation-expiry-posting",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.COMPLETED,
+				null)))
+				.isInstanceOf(com.digitalbank.accountservice.domain.exception.ReservationExpiredException.class);
+		assertThat(accountService.findById(account.id()).orElseThrow().currentBalance())
+				.isEqualByComparingTo("100.00");
+		assertThat(testInboxEventRepository.findByEventId("reservation-expiry-event")).isEmpty();
+	}
+
+	@Test
 	void rollsBackAccountAndReservationWhenInboxPersistenceFails() {
 		var account = fundedAccount("ledger-inbox-rollback");
 		var reservation = reservationService.reserve(reservationCommand(account, "ledger-inbox-rollback-request", "25.00"));
@@ -484,6 +535,11 @@ class AccountPersistenceIT {
 		public java.util.Optional<ReservationView> findByReservationRequestId(String reservationRequestId) {
 			coordinateLookupIfRequested(reservationRequestId);
 			return delegate.findByReservationRequestId(reservationRequestId);
+		}
+
+		@Override
+		public java.util.List<ReservationView> findExpiredActiveForUpdate(Instant expiresBy, int limit) {
+			return delegate.findExpiredActiveForUpdate(expiresBy, limit);
 		}
 
 		@Override

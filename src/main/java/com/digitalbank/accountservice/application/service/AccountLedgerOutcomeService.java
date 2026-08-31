@@ -26,6 +26,7 @@ import com.digitalbank.accountservice.domain.exception.InsufficientCurrentBalanc
 import com.digitalbank.accountservice.domain.exception.LedgerPostingOutcomeConflictException;
 import com.digitalbank.accountservice.domain.exception.OptimisticLockConflictException;
 import com.digitalbank.accountservice.domain.exception.ReservationNotFoundException;
+import com.digitalbank.accountservice.domain.exception.ReservationExpiredException;
 import com.digitalbank.accountservice.domain.exception.ReservationStateConflictException;
 import com.digitalbank.accountservice.domain.model.Account;
 import com.digitalbank.accountservice.domain.model.ReservationStatus;
@@ -95,12 +96,13 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
 				.orElseThrow(() -> new ReservationNotFoundException(command.reservationRequestId()));
 		var account = accountRepository.findById(reservation.accountId())
 				.orElseThrow(() -> new IllegalStateException("Account for reservation is missing"));
+		account.requireActiveForMonetaryOperation("apply ledger outcome " + command.outcome());
 		var now = clock.instant();
 		var updated = transition(command, reservation, account, now);
 
 		try {
-			accountRepository.save(updated.account());
 			reservationRepository.save(updated.reservation());
+			accountRepository.save(updated.account());
 			inboxEventRepository.save(command, now);
 		} catch (OptimisticLockingFailureException | jakarta.persistence.OptimisticLockException exception) {
 			throw new OptimisticLockConflictException(exception);
@@ -154,6 +156,12 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
 			ReservationView reservation,
 			Account account,
 			Instant now) {
+		if (command.outcome() == LedgerPostingOutcome.COMPLETED
+				&& (reservation.status() == ReservationStatus.EXPIRED
+						|| (reservation.status() == ReservationStatus.ACTIVE
+								&& !now.isBefore(reservation.expiresAt())))) {
+			throw new ReservationExpiredException(reservation.reservationRequestId(), reservation.expiresAt());
+		}
 		return switch (command.outcome()) {
 			case COMPLETED -> commit(command, reservation, account, now);
 			case FAILED -> release(command, reservation, account, now);

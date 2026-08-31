@@ -8,7 +8,7 @@ Consume governed Ledger Service posting outcome facts and settle the matching Ac
 
 The adapter consumes only `LedgerPostingCompleted.v1` and `LedgerPostingFailed.v1` from `.github#137`. Every record must carry `event-id`, `correlation-id`, `causation-id`, `producer`, `schema-version`, and `occurred-at` Kafka headers. The same event identity and metadata in the JSON payload must agree with the headers.
 
-`ledger-service` is the only trusted producer and `1.0.0` is the only supported schema version. The topic key is `aggregateId`; Kafka ordering is guaranteed only for one key within one topic, while delivery is at least once.
+`ledger-service` is the expected producer metadata and `1.0.0` is the only supported schema version. Producer metadata is semantic validation, not authentication. The production security boundary must authenticate clients with SASL over TLS or mTLS and enforce least-privilege topic ACLs before this consumer is enabled. The topic key is `aggregateId`; Kafka ordering is guaranteed only for one key within one topic, while delivery is at least once.
 
 Completed payloads must have a valid UUID event and posting identity, matching aggregate and posting ids, an ISO currency, balanced debit and credit lines, and positive decimal strings with at most four fractional digits. Account Service validates that exactly one debit line matches the persisted reservation account and amount, and that the payload currency matches both the reservation and account. Failed payloads have no account, currency, amount, or line fields in the governed model; they are validated only against their applicable identity and failure fields.
 
@@ -24,7 +24,7 @@ The mapper performs no mutation. The existing outcome service continues to atomi
 
 ## Failure Handling
 
-Malformed, untrusted, unsupported, or semantically invalid records are deterministic failures. The listener does not invoke the outcome port for them and the Kafka error handler sends them directly to the governed topic-specific DLQ. Existing durable inbox conflicts are also deterministic and go directly to DLQ without another balance transition.
+Malformed, unsupported, or semantically invalid records are deterministic failures. The listener does not invoke the outcome port for them and the Kafka error handler sends them directly to the governed topic-specific DLQ. Existing durable inbox conflicts, expired completions, and non-active account conflicts are also deterministic and go directly to DLQ without another balance transition.
 
 Transient persistence and order-dependent state failures receive a bounded fixed-backoff retry. Exhausted retries are published by Spring Kafka's `DeadLetterPublishingRecoverer` to `<source-topic>.dlq`, preserving the original record and failure metadata. Kafka, not process memory, is the durable recovery surface. Authorized operators correct the root cause where needed and explicitly replay the original record; its event id makes reprocessing idempotent.
 

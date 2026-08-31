@@ -14,7 +14,7 @@
 
 - Consume only `LedgerPostingCompleted.v1` and `LedgerPostingFailed.v1` from `.github#137`.
 - Require `event-id`, `correlation-id`, `causation-id`, `producer`, `schema-version`, and `occurred-at` Kafka headers and cross-check repeated payload metadata.
-- Trust only `ledger-service` and schema version `1.0.0`.
+- Require `ledger-service` producer metadata and schema version `1.0.0`; authenticate producers at the Kafka broker boundary.
 - Preserve the existing `LedgerPostingOutcomeInputPort`, transactional inbox, conflict detection, and optimistic locking.
 - Keep Kafka disabled by default; configure SIT explicitly through Helm.
 - Send deterministic invalid or conflict events directly to a durable topic-specific DLQ; use bounded retry for transient failures.

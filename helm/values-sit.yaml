@@ -5,3 +5,5 @@ runtime:
 ledgerKafka:
   enabled: true
   bootstrapServers: kafka.digital-bank-sit.svc.cluster.local:9092
+  securityProtocol: PLAINTEXT
+  allowInsecureTransport: true
