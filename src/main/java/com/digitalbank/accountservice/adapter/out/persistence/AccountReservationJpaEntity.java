@@ -63,6 +63,15 @@ class AccountReservationJpaEntity {
 	@Column(name = "reversed_by_ledger_posting_id", unique = true, length = 100)
 	private String reversedByLedgerPostingId;
 
+	@Column(name = "destination_account_id")
+	private UUID destinationAccountId;
+
+	@Column(name = "transaction_id")
+	private UUID transactionId;
+
+	@Column(name = "accepted_event_id", unique = true)
+	private UUID acceptedEventId;
+
 	protected AccountReservationJpaEntity() {
 	}
 
@@ -95,9 +104,31 @@ class AccountReservationJpaEntity {
 			Instant expiresAt,
 			long version,
 			Instant createdAt,
+				Instant updatedAt,
+				String ledgerPostingId,
+				String reversedByLedgerPostingId) {
+		this(id, accountId, reservationRequestId, currency, amount, correlationId, causationId, status, expiresAt,
+				version, createdAt, updatedAt, ledgerPostingId, reversedByLedgerPostingId, null, null, null);
+	}
+
+	AccountReservationJpaEntity(
+			UUID id,
+			UUID accountId,
+			String reservationRequestId,
+			String currency,
+			BigDecimal amount,
+			String correlationId,
+			String causationId,
+			ReservationStatus status,
+			Instant expiresAt,
+			long version,
+			Instant createdAt,
 			Instant updatedAt,
 			String ledgerPostingId,
-			String reversedByLedgerPostingId) {
+			String reversedByLedgerPostingId,
+			UUID destinationAccountId,
+			UUID transactionId,
+			UUID acceptedEventId) {
 		this.id = id;
 		this.accountId = accountId;
 		this.reservationRequestId = reservationRequestId;
@@ -112,6 +143,9 @@ class AccountReservationJpaEntity {
 		this.updatedAt = updatedAt;
 		this.ledgerPostingId = ledgerPostingId;
 		this.reversedByLedgerPostingId = reversedByLedgerPostingId;
+		this.destinationAccountId = destinationAccountId;
+		this.transactionId = transactionId;
+		this.acceptedEventId = acceptedEventId;
 	}
 
 	UUID id() {
@@ -169,4 +203,10 @@ class AccountReservationJpaEntity {
 	String reversedByLedgerPostingId() {
 		return reversedByLedgerPostingId;
 	}
+
+	UUID destinationAccountId() { return destinationAccountId; }
+
+	UUID transactionId() { return transactionId; }
+
+	UUID acceptedEventId() { return acceptedEventId; }
 }

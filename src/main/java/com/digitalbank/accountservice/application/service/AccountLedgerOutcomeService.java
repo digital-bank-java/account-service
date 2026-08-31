@@ -22,6 +22,7 @@ import com.digitalbank.accountservice.application.port.in.ReservationView;
 import com.digitalbank.accountservice.application.port.out.AccountInboxEventRepository;
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
 import com.digitalbank.accountservice.application.port.out.AccountReservationRepository;
+import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutbox;
 import com.digitalbank.accountservice.domain.exception.InsufficientCurrentBalanceException;
 import com.digitalbank.accountservice.domain.exception.LedgerPostingOutcomeConflictException;
 import com.digitalbank.accountservice.domain.exception.OptimisticLockConflictException;
@@ -38,17 +39,24 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
 	private final AccountReservationRepository reservationRepository;
 	private final AccountInboxEventRepository inboxEventRepository;
 	private final Clock clock;
+	private final AccountReservationEventOutbox reservationEventOutbox;
 	private final TransactionOperations transactionOperations;
 
 	@Autowired
 	public AccountLedgerOutcomeService(
 			AccountRepository accountRepository,
 			AccountReservationRepository reservationRepository,
-			AccountInboxEventRepository inboxEventRepository,
-			Clock clock,
-			PlatformTransactionManager transactionManager) {
+				AccountInboxEventRepository inboxEventRepository,
+				Clock clock,
+				PlatformTransactionManager transactionManager,
+				AccountReservationEventOutbox reservationEventOutbox) {
 		this(accountRepository, reservationRepository, inboxEventRepository, clock,
-				new TransactionTemplate(transactionManager));
+				new TransactionTemplate(transactionManager), reservationEventOutbox);
+	}
+
+	public AccountLedgerOutcomeService(AccountRepository accountRepository, AccountReservationRepository reservationRepository,
+			AccountInboxEventRepository inboxEventRepository, Clock clock, PlatformTransactionManager transactionManager) {
+		this(accountRepository, reservationRepository, inboxEventRepository, clock, new TransactionTemplate(transactionManager), null);
 	}
 
 	public AccountLedgerOutcomeService(
@@ -65,10 +73,17 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
 			AccountInboxEventRepository inboxEventRepository,
 			Clock clock,
 			TransactionOperations transactionOperations) {
+		this(accountRepository, reservationRepository, inboxEventRepository, clock, transactionOperations, null);
+	}
+
+	private AccountLedgerOutcomeService(AccountRepository accountRepository, AccountReservationRepository reservationRepository,
+			AccountInboxEventRepository inboxEventRepository, Clock clock, TransactionOperations transactionOperations,
+			AccountReservationEventOutbox reservationEventOutbox) {
 		this.accountRepository = accountRepository;
 		this.reservationRepository = reservationRepository;
 		this.inboxEventRepository = inboxEventRepository;
 		this.clock = clock;
+		this.reservationEventOutbox = reservationEventOutbox;
 		this.transactionOperations = transactionOperations;
 	}
 
@@ -102,8 +117,13 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
 
 		try {
 			reservationRepository.save(updated.reservation());
-			accountRepository.save(updated.account());
-			inboxEventRepository.save(command, now);
+				accountRepository.save(updated.account());
+				inboxEventRepository.save(command, now);
+				if (reservationEventOutbox != null && command.outcome() == LedgerPostingOutcome.FAILED
+						&& updated.reservation().status() == ReservationStatus.RELEASED) {
+					reservationEventOutbox.recordIfAbsent(AccountReservationTransportService.releasedEvent(
+							updated.reservation(), command.eventId(), "LEDGER_POSTING_FAILED", command.ledgerPostingId(), now));
+				}
 		} catch (OptimisticLockingFailureException | jakarta.persistence.OptimisticLockException exception) {
 			throw new OptimisticLockConflictException(exception);
 		}
