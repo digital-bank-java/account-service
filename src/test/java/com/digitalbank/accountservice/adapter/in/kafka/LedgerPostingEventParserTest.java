@@ -91,6 +91,12 @@ class LedgerPostingEventParserTest {
 				.isInstanceOf(InvalidLedgerPostingEventException.class);
 	}
 
+	@Test
+	void rejectsPayloadWithTrailingJsonToken() {
+		assertThatThrownBy(() -> parser.parse(completedPayload() + "{}", headers("ledger-service"), "LedgerPostingCompleted.v1"))
+				.isInstanceOf(InvalidLedgerPostingEventException.class);
+	}
+
 	private static Map<String, String> headers(String producer) {
 		return Map.of(
 				"event-id", EVENT_ID.toString(),

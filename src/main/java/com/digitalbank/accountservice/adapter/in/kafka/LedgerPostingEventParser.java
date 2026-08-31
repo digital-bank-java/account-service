@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import com.digitalbank.accountservice.application.port.in.GovernedLedgerPostingEvent;
 import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEventException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -17,7 +18,8 @@ public class LedgerPostingEventParser {
 	private static final String EXPECTED_PRODUCER = "ledger-service";
 	private static final String SUPPORTED_SCHEMA_VERSION = "1.0.0";
 
-	private final ObjectMapper objectMapper = new ObjectMapper();
+	private final ObjectMapper objectMapper = new ObjectMapper()
+			.enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
 	public GovernedLedgerPostingEvent parse(String payload, Map<String, String> headers, String expectedEventType) {
 		try {
