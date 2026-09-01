@@ -13,6 +13,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.digitalbank.accountservice.domain.exception.AccountNotFoundException;
+import com.digitalbank.accountservice.domain.exception.AccountStatusConflictException;
+import com.digitalbank.accountservice.domain.exception.LedgerPostingOutcomeConflictException;
+import com.digitalbank.accountservice.domain.exception.ReservationExpiredException;
+import com.digitalbank.accountservice.domain.exception.ReservationRequestConflictException;
+import com.digitalbank.accountservice.domain.exception.ReservationStateConflictException;
 
 import jakarta.validation.ConstraintViolationException;
 
@@ -33,6 +38,20 @@ class ApiExceptionHandler {
 		var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Account request conflicts with existing data");
 		problem.setTitle("Account conflict");
 		problem.setType(URI.create("https://digital-bank-java.local/problems/account-conflict"));
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+	}
+
+	@ExceptionHandler({
+			AccountStatusConflictException.class,
+			ReservationExpiredException.class,
+			ReservationStateConflictException.class,
+			LedgerPostingOutcomeConflictException.class,
+			ReservationRequestConflictException.class })
+	ResponseEntity<ProblemDetail> handleConflict(RuntimeException exception) {
+		var problemName = problemName(exception);
+		var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle(problemName.title());
+		problem.setType(URI.create("https://digital-bank-java.local/problems/" + problemName.slug()));
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
 	}
 
@@ -72,5 +91,24 @@ class ApiExceptionHandler {
 		problem.setTitle("Invalid request");
 		problem.setType(URI.create("https://digital-bank-java.local/problems/validation-error"));
 		return ResponseEntity.status(exception.getStatusCode()).body(problem);
+	}
+
+	private static ProblemName problemName(RuntimeException exception) {
+		if (exception instanceof AccountStatusConflictException) {
+			return new ProblemName("account-status-conflict", "Account status conflict");
+		}
+		if (exception instanceof ReservationExpiredException) {
+			return new ProblemName("reservation-expired", "Reservation expired");
+		}
+		if (exception instanceof ReservationStateConflictException) {
+			return new ProblemName("reservation-state-conflict", "Reservation state conflict");
+		}
+		if (exception instanceof LedgerPostingOutcomeConflictException) {
+			return new ProblemName("ledger-posting-outcome-conflict", "Ledger posting outcome conflict");
+		}
+		return new ProblemName("reservation-request-conflict", "Reservation request conflict");
+	}
+
+	private record ProblemName(String slug, String title) {
 	}
 }

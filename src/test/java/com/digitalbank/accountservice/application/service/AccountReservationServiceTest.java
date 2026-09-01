@@ -20,6 +20,7 @@ import com.digitalbank.accountservice.application.port.out.AccountRepository;
 import com.digitalbank.accountservice.application.port.out.AccountSearchCriteria;
 import com.digitalbank.accountservice.application.port.out.AccountSearchResult;
 import com.digitalbank.accountservice.domain.exception.AccountNotFoundException;
+import com.digitalbank.accountservice.domain.exception.AccountStatusConflictException;
 import com.digitalbank.accountservice.domain.exception.AccountCurrencyMismatchException;
 import com.digitalbank.accountservice.domain.exception.InsufficientAvailableBalanceException;
 import com.digitalbank.accountservice.domain.exception.OptimisticLockConflictException;
@@ -137,7 +138,24 @@ class AccountReservationServiceTest {
 		assertThat(reservationRepository.savedReservations()).isEmpty();
 	}
 
+	@Test
+	void rejectsReservationsForSuspendedAndClosedAccounts() {
+		for (var status : List.of(AccountStatus.SUSPENDED, AccountStatus.CLOSED)) {
+			var account = accountWithStatus(status, "100.00");
+
+			assertThatThrownBy(() -> service.reserve(command(account, "reserve-" + status.name(), "25.00")))
+					.isInstanceOf(AccountStatusConflictException.class);
+			assertThat(accountRepository.findById(account.id()).orElseThrow().availableBalance())
+					.isEqualByComparingTo("100.00");
+		}
+		assertThat(reservationRepository.savedReservations()).isEmpty();
+	}
+
 	private Account accountWithAvailableBalance(String availableBalance) {
+		return accountWithStatus(AccountStatus.ACTIVE, availableBalance);
+	}
+
+	private Account accountWithStatus(AccountStatus status, String availableBalance) {
 		var account = new Account(
 				AccountId.newId(),
 				CustomerId.newId(),
@@ -145,14 +163,14 @@ class AccountReservationServiceTest {
 				null,
 				AccountType.CURRENT,
 				"AED",
-				AccountStatus.ACTIVE,
+				status,
 				new BigDecimal(availableBalance),
 				new BigDecimal(availableBalance),
 				"open-request-001",
 				0L,
 				NOW,
 				NOW,
-				null);
+				status == AccountStatus.CLOSED ? NOW : null);
 		accountRepository.save(account);
 		return account;
 	}

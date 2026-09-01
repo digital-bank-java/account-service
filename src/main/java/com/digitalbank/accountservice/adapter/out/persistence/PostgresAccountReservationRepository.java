@@ -1,6 +1,7 @@
 package com.digitalbank.accountservice.adapter.out.persistence;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
@@ -22,6 +23,13 @@ class PostgresAccountReservationRepository implements AccountReservationReposito
 	@Override
 	public Optional<ReservationView> findByReservationRequestId(String reservationRequestId) {
 		return repository.findByReservationRequestId(reservationRequestId).map(AccountReservationJpaMapper::toView);
+	}
+
+	@Override
+	public List<ReservationView> findExpiredActiveForUpdate(Instant expiresBy, int limit) {
+		return repository.findExpiredActiveForUpdate(expiresBy, limit).stream()
+				.map(AccountReservationJpaMapper::toView)
+				.toList();
 	}
 
 	@Override
