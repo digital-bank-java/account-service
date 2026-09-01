@@ -28,6 +28,10 @@ ledgerKafka:
   retryAttempts: 3
   retryDelayMs: 1000
 
+reservationKafka:
+  enabled: false
+  allowInsecureTransport: false
+
 reservationExpiry:
   enabled: true
   batchSize: 100

@@ -53,6 +53,10 @@ spec:
               value: {{ .Values.ledgerKafka.retryAttempts | quote }}
             - name: ACCOUNT_LEDGER_KAFKA_RETRY_DELAY_MS
               value: {{ .Values.ledgerKafka.retryDelayMs | quote }}
+            - name: ACCOUNT_RESERVATION_KAFKA_ENABLED
+              value: {{ .Values.reservationKafka.enabled | quote }}
+            - name: ACCOUNT_RESERVATION_KAFKA_ALLOW_INSECURE_TRANSPORT
+              value: {{ .Values.reservationKafka.allowInsecureTransport | quote }}
             - name: ACCOUNT_RESERVATION_EXPIRY_ENABLED
               value: {{ .Values.reservationExpiry.enabled | quote }}
             - name: ACCOUNT_RESERVATION_EXPIRY_BATCH_SIZE

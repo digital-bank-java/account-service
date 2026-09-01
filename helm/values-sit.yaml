@@ -7,3 +7,7 @@ ledgerKafka:
   bootstrapServers: kafka.digital-bank-sit.svc.cluster.local:9092
   securityProtocol: PLAINTEXT
   allowInsecureTransport: true
+
+reservationKafka:
+  enabled: true
+  allowInsecureTransport: true

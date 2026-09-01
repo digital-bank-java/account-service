@@ -59,7 +59,7 @@ public class ReservationEventParser {
 		var requestId = text(root, "reservationRequestId");
 		if (!aggregateId.equals(requestId)) throw invalid("Reservation aggregate id must equal reservation request id");
 		var reason = text(root, "reason");
-		if (!java.util.Set.of("TRANSFER_CANCELED", "TRANSFER_TIMEOUT", "MANUAL_COMPENSATION").contains(reason)) {
+		if (!java.util.Set.of("TRANSFER_CANCELED", "TRANSFER_TIMEOUT", "MANUAL_COMPENSATION", "LEDGER_POSTING_FAILED").contains(reason)) {
 			throw invalid("Unsupported reservation release reason");
 		}
 		return new ReservationReleaseRequestedEvent(metadata.eventId(), text(root, "eventType"), metadata.schemaVersion(),
