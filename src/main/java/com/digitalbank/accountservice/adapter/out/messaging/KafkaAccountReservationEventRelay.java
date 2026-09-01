@@ -15,31 +15,31 @@ import org.springframework.stereotype.Component;
 
 import com.digitalbank.accountservice.application.port.out.AccountReservationEvent;
 import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutbox;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutboxEntry;
 
 @Component
 @ConditionalOnProperty(prefix = "account.reservation.kafka", name = "enabled", havingValue = "true")
 class KafkaAccountReservationEventRelay {
 	private final KafkaTemplate<String, String> kafkaTemplate;
 	private final AccountReservationEventOutbox outbox;
-	private final ObjectMapper objectMapper;
 	private final Environment environment;
-	KafkaAccountReservationEventRelay(@Qualifier("reservationKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate, AccountReservationEventOutbox outbox, ObjectMapper objectMapper, Environment environment) {
-		this.kafkaTemplate = kafkaTemplate; this.outbox = outbox; this.objectMapper = objectMapper; this.environment = environment;
+	KafkaAccountReservationEventRelay(@Qualifier("reservationKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate, AccountReservationEventOutbox outbox, Environment environment) {
+		this.kafkaTemplate = kafkaTemplate; this.outbox = outbox; this.environment = environment;
 	}
 
 	@Scheduled(fixedDelayString = "${account.reservation.kafka.relay-delay-ms:1000}")
 	void publishReadyEvents() {
 		var now = Instant.now(); var token = UUID.randomUUID();
-		for (var event : outbox.claimReady(100, now, token, now.plusSeconds(900))) {
-			try { kafkaTemplate.send(record(event)).get(10, TimeUnit.SECONDS); outbox.markPublished(event, token, Instant.now()); }
+		for (var entry : outbox.claimReady(100, now, token, now.plusSeconds(900))) {
+			var event = entry.event();
+			try { kafkaTemplate.send(record(entry)).get(10, TimeUnit.SECONDS); outbox.markPublished(event, token, Instant.now()); }
 			catch (Exception exception) { var message = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(); outbox.markFailed(event, token, message.substring(0, Math.min(2000, message.length())), Instant.now().plusSeconds(5)); }
 		}
 	}
 
-	private ProducerRecord<String, String> record(AccountReservationEvent event) {
-		var record = new ProducerRecord<>(topic(event), event.sourceAccountId().toString(), serialize(event));
+	private ProducerRecord<String, String> record(AccountReservationEventOutboxEntry entry) {
+		var event = entry.event();
+		var record = new ProducerRecord<>(topic(event), event.aggregateId(), entry.jsonPayload());
 		add(record, "event-id", event.eventId().toString()); add(record, "correlation-id", event.correlationId()); add(record, "causation-id", event.causationId()); add(record, "producer", event.producer()); add(record, "schema-version", event.schemaVersion()); add(record, "occurred-at", event.occurredAt().toString()); return record;
 	}
 	private String topic(AccountReservationEvent event) {
@@ -51,6 +51,5 @@ class KafkaAccountReservationEventRelay {
 			default -> throw new IllegalArgumentException("Unsupported reservation event type: " + event.eventType());
 		};
 	}
-	private String serialize(AccountReservationEvent event) { try { return objectMapper.writeValueAsString(event); } catch (JsonProcessingException exception) { throw new IllegalStateException("Could not serialize reservation event", exception); } }
 	private static void add(ProducerRecord<String, String> record, String name, String value) { record.headers().add(name, value.getBytes(StandardCharsets.UTF_8)); }
 }

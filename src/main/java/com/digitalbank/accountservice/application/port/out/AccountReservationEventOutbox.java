@@ -8,7 +8,7 @@ public interface AccountReservationEventOutbox {
 
 	boolean recordIfAbsent(AccountReservationEvent event);
 
-	default List<AccountReservationEvent> claimReady(int limit, Instant now, UUID claimToken, Instant leaseUntil) {
+	default List<AccountReservationEventOutboxEntry> claimReady(int limit, Instant now, UUID claimToken, Instant leaseUntil) {
 		return List.of();
 	}
 

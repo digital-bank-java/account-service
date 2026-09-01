@@ -11,6 +11,8 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -42,12 +44,15 @@ public class ReservationKafkaConfiguration {
 		var values = common(environment);
 		values.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 		values.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, environment.getProperty("spring.kafka.consumer.auto-offset-reset", "earliest"));
+		values.putAll(boundProperties(environment, "spring.kafka.consumer.properties"));
 		return new DefaultKafkaConsumerFactory<>(values, new StringDeserializer(), new StringDeserializer());
 	}
 
 	@Bean("reservationProducerFactory")
 	ProducerFactory<String, String> reservationProducerFactory(Environment environment) {
-		return new DefaultKafkaProducerFactory<>(common(environment), new StringSerializer(), new StringSerializer());
+		var values = common(environment);
+		values.putAll(boundProperties(environment, "spring.kafka.producer.properties"));
+		return new DefaultKafkaProducerFactory<>(values, new StringSerializer(), new StringSerializer());
 	}
 
 	@Bean("reservationKafkaTemplate")
@@ -92,9 +97,16 @@ public class ReservationKafkaConfiguration {
 	private static Map<String, Object> common(Environment environment) {
 		var values = new HashMap<String, Object>();
 		values.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getRequiredProperty("spring.kafka.bootstrap-servers"));
+		values.putAll(boundProperties(environment, "spring.kafka.properties"));
 		var securityProtocol = environment.getProperty("spring.kafka.properties[security.protocol]");
 		if (securityProtocol == null) securityProtocol = environment.getProperty("spring.kafka.properties.security.protocol");
 		if (securityProtocol != null) values.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol);
 		return values;
+	}
+
+	private static Map<String, Object> boundProperties(Environment environment, String prefix) {
+		return new HashMap<>(Binder.get(environment)
+				.bind(prefix, Bindable.mapOf(String.class, Object.class))
+				.orElse(Map.of()));
 	}
 }

@@ -7,6 +7,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
@@ -27,6 +28,11 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 		"account.ledger.kafka.group-id=account-service-ledger-outcomes-test",
 			"account.ledger.kafka.retry-attempts=3",
 			"account.ledger.kafka.retry-delay-ms=10",
+			"account.reservation.kafka.enabled=true",
+			"account.reservation.kafka.auto-startup=false",
+			"account.reservation.kafka.requested-topic=account.reservation.requested.v1",
+			"account.reservation.kafka.release-requested-topic=account.reservation.release-requested.v1",
+			"account.reservation.kafka.group-id=account-service-reservation-test",
 			"spring.kafka.bootstrap-servers=localhost:9092",
 			"spring.kafka.properties[security.protocol]=SSL"
 })
@@ -40,14 +46,16 @@ class AccountKafkaConfigurationIT {
 	private KafkaListenerEndpointRegistry listenerRegistry;
 
 	@Autowired
+	@Qualifier("ledgerConsumerFactory")
 	private ConsumerFactory<String, String> consumerFactory;
 
 	@Autowired
+	@Qualifier("ledgerKafkaTemplate")
 	private KafkaTemplate<String, String> kafkaTemplate;
 
 	@Test
-	void registersLedgerKafkaListenersWhenIntegrationIsEnabled() {
-		assertThat(listenerRegistry.getListenerContainers()).hasSize(2);
+	void registersBothKafkaListenerGroupsWhenBothIntegrationsAreEnabled() {
+		assertThat(listenerRegistry.getListenerContainers()).hasSize(4);
 	}
 
 	@Test

@@ -14,9 +14,12 @@ class ReservationKafkaConfigurationTest {
 
 	@Test
 	void propagatesConfiguredSecurityProtocolToReservationFactories() {
-		var environment = new MockEnvironment()
-				.withProperty("spring.kafka.bootstrap-servers", "localhost:9092")
-				.withProperty("spring.kafka.properties[security.protocol]", "SSL");
+			var environment = new MockEnvironment()
+					.withProperty("spring.kafka.bootstrap-servers", "localhost:9092")
+					.withProperty("spring.kafka.properties[security.protocol]", "SSL")
+					.withProperty("spring.kafka.properties[sasl.mechanism]", "SCRAM-SHA-512")
+					.withProperty("spring.kafka.consumer.properties[client.id]", "reservation-consumer")
+					.withProperty("spring.kafka.producer.properties[client.id]", "reservation-producer");
 		var configuration = new ReservationKafkaConfiguration();
 
 		var consumerFactory = configuration.reservationConsumerFactory(environment);
@@ -25,14 +28,18 @@ class ReservationKafkaConfigurationTest {
 		assertThat(consumerFactory).isInstanceOfSatisfying(DefaultKafkaConsumerFactory.class, factory -> {
 			assertThat(factory.getKeyDeserializer()).isInstanceOf(StringDeserializer.class);
 			assertThat(factory.getValueDeserializer()).isInstanceOf(StringDeserializer.class);
-			assertThat(factory.getConfigurationProperties())
-					.containsEntry(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
+					assertThat(factory.getConfigurationProperties())
+							.containsEntry(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL")
+							.containsEntry("sasl.mechanism", "SCRAM-SHA-512")
+							.containsEntry("client.id", "reservation-consumer");
 		});
 		assertThat(producerFactory).isInstanceOfSatisfying(DefaultKafkaProducerFactory.class, factory -> {
 			assertThat(factory.getKeySerializer()).isInstanceOf(StringSerializer.class);
 			assertThat(factory.getValueSerializer()).isInstanceOf(StringSerializer.class);
-			assertThat(factory.getConfigurationProperties())
-					.containsEntry(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
+					assertThat(factory.getConfigurationProperties())
+							.containsEntry(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL")
+							.containsEntry("sasl.mechanism", "SCRAM-SHA-512")
+							.containsEntry("client.id", "reservation-producer");
 		});
 	}
 }

@@ -12,6 +12,7 @@ import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -73,13 +74,14 @@ public class LedgerKafkaConfiguration {
 	}
 
 	@Bean
-	KafkaTemplate<String, String> ledgerKafkaTemplate(ProducerFactory<String, String> ledgerProducerFactory) {
+	KafkaTemplate<String, String> ledgerKafkaTemplate(
+				@Qualifier("ledgerProducerFactory") ProducerFactory<String, String> ledgerProducerFactory) {
 		return new KafkaTemplate<>(ledgerProducerFactory);
 	}
 
 	@Bean
 	DefaultErrorHandler ledgerKafkaErrorHandler(
-			KafkaTemplate<String, String> kafkaTemplate,
+			@Qualifier("ledgerKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
 			LedgerKafkaProperties properties) {
 		var recoverer = new DeadLetterPublishingRecoverer(
 				kafkaTemplate,
@@ -98,8 +100,8 @@ public class LedgerKafkaConfiguration {
 
 	@Bean
 	ConcurrentKafkaListenerContainerFactory<String, String> ledgerKafkaListenerContainerFactory(
-			ConsumerFactory<String, String> consumerFactory,
-			DefaultErrorHandler ledgerKafkaErrorHandler,
+			@Qualifier("ledgerConsumerFactory") ConsumerFactory<String, String> consumerFactory,
+			@Qualifier("ledgerKafkaErrorHandler") DefaultErrorHandler ledgerKafkaErrorHandler,
 			LedgerKafkaProperties properties) {
 		var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
 		factory.setConsumerFactory(consumerFactory);

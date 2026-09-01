@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.digitalbank.accountservice.application.port.out.AccountReservationEvent;
 import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutbox;
+import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutboxEntry;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -36,9 +37,11 @@ class PostgresAccountReservationEventOutbox implements AccountReservationEventOu
 
 	@Override
 	@Transactional
-	public List<AccountReservationEvent> claimReady(int limit, Instant now, UUID token, Instant lease) {
+	public List<AccountReservationEventOutboxEntry> claimReady(int limit, Instant now, UUID token, Instant lease) {
 		repository.claimReady(limit, now, token, lease);
-		return repository.findByProcessingTokenOrderByCreatedAtAsc(token).stream().map(AccountReservationEventOutboxJpaEntity::toEvent).toList();
+		return repository.findByProcessingTokenOrderByCreatedAtAsc(token).stream()
+				.map(entity -> new AccountReservationEventOutboxEntry(entity.toEvent(), entity.jsonPayload()))
+				.toList();
 	}
 
 	@Override
