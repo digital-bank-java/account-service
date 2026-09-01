@@ -18,6 +18,18 @@ The target ownership model is:
 | Account balance projection update | Account Service, triggered by ledger posting events |
 | Event contract governance | Event contracts / schema governance |
 
+## Implemented Account-Side Outcome Boundary
+
+The reservation foundation and account-side ledger outcome handler are transport-neutral application behavior. The handler accepts `eventId`, `ledgerPostingId`, `reservationRequestId`, an outcome of `COMPLETED`, `FAILED`, or `REVERSED`, and an optional original posting reference. It uses the persisted reservation as the authority for account, currency, and amount.
+
+The implemented transitions are:
+
+- `ACTIVE` + `COMPLETED` -> `COMMITTED`, decreasing current balance by the reserved amount.
+- `ACTIVE` + `FAILED` -> `RELEASED`, restoring available balance by the reserved amount.
+- `COMMITTED` + `REVERSED` -> `REVERSED`, restoring current and available balance by the reserved amount.
+
+The transition and `account_inbox_events` insert share one database transaction. Event ID and ledger posting correlation replays are explicit no-ops; conflicting payloads and out-of-order reversals are rejected. The final Kafka event schema is intentionally not claimed here and must be mapped by a later adapter after `.github#137` / `ledger-service#14`.
+
 ## Why Public Balance Mutation APIs Are Not Allowed
 
 Direct public balance mutation endpoints create unacceptable risk in a banking system:
@@ -92,11 +104,11 @@ Expected future Account Service tables:
 
 | Table | Purpose |
 | --- | --- |
-| `account_reservations` | Active or released holds against available balance |
+| `account_reservations` | Active, committed, released, or reversed holds against available balance |
 | `account_idempotency_keys` | Deduplicate retryable account commands |
 | `account_balance_projection_entries` | Account-side projection records linked to ledger posting ids |
 | `account_outbox_events` | Transactional outbox for Kafka publication |
-| `account_inbox_events` | Deduplicate consumed ledger events |
+| `account_inbox_events` | Deduplicate consumed ledger events and retain their processed payload |
 
 Expected future Ledger Service tables:
 
@@ -189,12 +201,12 @@ This protects against duplicate Kafka delivery and retry behavior.
 Recommended future work:
 
 1. Bootstrap Ledger Service as the official posting owner.
-2. Add Account Service reservation, inbox, outbox, and projection tables.
+2. Add Account Service reservation, inbox, outbox, and projection tables. Reservation and inbox persistence are implemented in the account-side Sprint 3 slice; outbox and balance projection entries remain future work.
 3. Add Ledger Service posting, entry, and outbox tables.
 4. Add reservation domain behavior in Account Service.
 5. Add immutable double-entry posting behavior in Ledger Service.
 6. Add ledger posting events and governed Kafka contracts.
-7. Add Account Service consumers for ledger posting completion/failure.
+7. Add the transport adapter and Account Service consumers for ledger posting completion/failure after the governed contract is merged.
 8. Add Transaction Service saga orchestration and event consumers.
 9. Add integration tests for concurrent reservations, duplicate idempotency keys, duplicate events, and ledger/account reconciliation.
 

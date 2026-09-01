@@ -33,6 +33,24 @@ final class AccountReservationJpaMapper {
 				now);
 	}
 
+	static AccountReservationJpaEntity toEntity(ReservationView reservation) {
+		return new AccountReservationJpaEntity(
+				reservation.reservationId(),
+				reservation.accountId().value(),
+				reservation.reservationRequestId(),
+				reservation.currency(),
+				reservation.amount(),
+				reservation.correlationId(),
+				reservation.causationId(),
+				reservation.status(),
+				reservation.expiresAt(),
+				reservation.version(),
+				reservation.createdAt(),
+				reservation.updatedAt(),
+				reservation.ledgerPostingId(),
+				reservation.reversedByLedgerPostingId());
+	}
+
 	static ReservationView toView(AccountReservationJpaEntity entity) {
 		return new ReservationView(
 				entity.id(),
@@ -46,6 +64,8 @@ final class AccountReservationJpaMapper {
 				entity.expiresAt(),
 				entity.version(),
 				entity.createdAt(),
-				entity.updatedAt());
+				entity.updatedAt(),
+				entity.ledgerPostingId(),
+				entity.reversedByLedgerPostingId());
 	}
 }

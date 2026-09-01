@@ -9,6 +9,12 @@ Account lifecycle and account lookup service for the Digital Bank Java platform.
 - Keep account data inside the Account Service boundary.
 - Prepare the account domain for later transaction-controlled balance workflows.
 
+## Ledger Outcome Boundary
+
+Account Service exposes a transport-neutral application input boundary for ledger posting outcomes. It commits an active reservation on `COMPLETED`, releases it on `FAILED`, and applies the inverse projection on `REVERSED`. The account, currency, and amount are loaded from the persisted reservation; they are not accepted from the outcome input.
+
+The outcome handler records consumed event identity in the database with the reservation transition, so duplicate deliveries are replayed without applying a balance change twice. No Kafka listener or public balance mutation endpoint is included until the governed event contract is available from `.github#137` and `ledger-service#14`.
+
 ## Non-Responsibilities
 
 - Customer profile ownership.
@@ -54,6 +60,12 @@ Run the complete Maven test suite from the repository root:
 
 ```bash
 ./mvnw test
+```
+
+Run unit and Testcontainers integration verification:
+
+```bash
+./mvnw verify
 ```
 
 Tests disable the external Config Server dependency so the build remains deterministic.

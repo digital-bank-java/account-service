@@ -19,5 +19,24 @@ public record ReservationView(
 		Instant expiresAt,
 		long version,
 		Instant createdAt,
-		Instant updatedAt) {
+		Instant updatedAt,
+		String ledgerPostingId,
+		String reversedByLedgerPostingId) {
+
+	public ReservationView(
+				UUID reservationId,
+				AccountId accountId,
+				String reservationRequestId,
+				String currency,
+				BigDecimal amount,
+				String correlationId,
+				String causationId,
+				ReservationStatus status,
+				Instant expiresAt,
+				long version,
+				Instant createdAt,
+				Instant updatedAt) {
+		this(reservationId, accountId, reservationRequestId, currency, amount, correlationId, causationId,
+				status, expiresAt, version, createdAt, updatedAt, null, null);
+	}
 }

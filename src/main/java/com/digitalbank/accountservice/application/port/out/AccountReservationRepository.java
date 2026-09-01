@@ -12,4 +12,6 @@ public interface AccountReservationRepository {
 	Optional<ReservationView> findByReservationRequestId(String reservationRequestId);
 
 	ReservationView save(ReserveFundsCommand command, Account account, Instant now);
+
+	ReservationView save(ReservationView reservation);
 }

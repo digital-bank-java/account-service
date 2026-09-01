@@ -57,6 +57,12 @@ class AccountReservationJpaEntity {
 	@Column(name = "updated_at", nullable = false)
 	private Instant updatedAt;
 
+	@Column(name = "ledger_posting_id", unique = true, length = 100)
+	private String ledgerPostingId;
+
+	@Column(name = "reversed_by_ledger_posting_id", unique = true, length = 100)
+	private String reversedByLedgerPostingId;
+
 	protected AccountReservationJpaEntity() {
 	}
 
@@ -73,6 +79,25 @@ class AccountReservationJpaEntity {
 			long version,
 			Instant createdAt,
 			Instant updatedAt) {
+		this(id, accountId, reservationRequestId, currency, amount, correlationId, causationId, status,
+				expiresAt, version, createdAt, updatedAt, null, null);
+	}
+
+	AccountReservationJpaEntity(
+			UUID id,
+			UUID accountId,
+			String reservationRequestId,
+			String currency,
+			BigDecimal amount,
+			String correlationId,
+			String causationId,
+			ReservationStatus status,
+			Instant expiresAt,
+			long version,
+			Instant createdAt,
+			Instant updatedAt,
+			String ledgerPostingId,
+			String reversedByLedgerPostingId) {
 		this.id = id;
 		this.accountId = accountId;
 		this.reservationRequestId = reservationRequestId;
@@ -85,6 +110,8 @@ class AccountReservationJpaEntity {
 		this.version = version;
 		this.createdAt = createdAt;
 		this.updatedAt = updatedAt;
+		this.ledgerPostingId = ledgerPostingId;
+		this.reversedByLedgerPostingId = reversedByLedgerPostingId;
 	}
 
 	UUID id() {
@@ -133,5 +160,13 @@ class AccountReservationJpaEntity {
 
 	Instant updatedAt() {
 		return updatedAt;
+	}
+
+	String ledgerPostingId() {
+		return ledgerPostingId;
+	}
+
+	String reversedByLedgerPostingId() {
+		return reversedByLedgerPostingId;
 	}
 }
