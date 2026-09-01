@@ -5,17 +5,32 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
+import java.util.UUID;
 
 import com.digitalbank.accountservice.domain.model.AccountId;
 
 public record ReserveFundsCommand(
 		String reservationRequestId,
 		AccountId accountId,
+		AccountId destinationAccountId,
+		UUID transactionId,
 		String currency,
 		BigDecimal amount,
 		String correlationId,
 		String causationId,
-		Instant expiresAt) {
+		Instant expiresAt,
+		UUID acceptedEventId) {
+
+	public ReserveFundsCommand(
+			String reservationRequestId,
+			AccountId accountId,
+			String currency,
+			BigDecimal amount,
+			String correlationId,
+			String causationId,
+			Instant expiresAt) {
+		this(reservationRequestId, accountId, null, null, currency, amount, correlationId, causationId, expiresAt, null);
+	}
 
 	public ReserveFundsCommand {
 		reservationRequestId = requireText(reservationRequestId, "Reservation request id is required");
