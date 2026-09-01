@@ -10,8 +10,13 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import com.digitalbank.accountservice.application.port.in.InboxEventView;
 import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcome;
@@ -21,6 +26,8 @@ import com.digitalbank.accountservice.application.port.in.ReservationView;
 import com.digitalbank.accountservice.application.port.in.ReserveFundsCommand;
 import com.digitalbank.accountservice.application.port.out.AccountInboxEventRepository;
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
+import com.digitalbank.accountservice.application.port.out.AccountReservationEvent;
+import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutbox;
 import com.digitalbank.accountservice.application.port.out.AccountReservationRepository;
 import com.digitalbank.accountservice.application.port.out.AccountSearchCriteria;
 import com.digitalbank.accountservice.application.port.out.AccountSearchResult;
@@ -83,6 +90,57 @@ class AccountLedgerOutcomeServiceTest {
 				.isEqualByComparingTo("100.00");
 		assertThat(reservationRepository.findByReservationRequestId(fixture.reservationRequestId()).orElseThrow().status())
 				.isEqualTo(ReservationStatus.RELEASED);
+	}
+
+	@Test
+	void preservesReservationTransportMetadataWhenLedgerFailurePublishesReleaseFact() {
+		var fixture = activeReservation("reservation-failed-transport");
+		var destinationAccountId = AccountId.newId();
+		var transactionId = UUID.randomUUID();
+		var acceptedEventId = UUID.randomUUID();
+		var transportReservation = new ReservationView(
+				fixture.reservationId(), fixture.accountId(), fixture.reservationRequestId(), fixture.currency(), fixture.amount(),
+				fixture.correlationId(), fixture.causationId(), fixture.status(), fixture.expiresAt(), fixture.version(),
+				fixture.createdAt(), fixture.updatedAt(), fixture.ledgerPostingId(), fixture.reversedByLedgerPostingId(),
+				destinationAccountId, transactionId, acceptedEventId);
+		reservationRepository.save(transportReservation);
+		var events = new ArrayList<AccountReservationEvent>();
+		AccountReservationEventOutbox outbox = event -> {
+			events.add(event);
+			return true;
+		};
+		var transportService = new AccountLedgerOutcomeService(
+				accountRepository, reservationRepository, inboxRepository, Clock.fixed(NOW, ZoneOffset.UTC),
+				noOpTransactionManager(), outbox);
+
+		transportService.handle(command("event-failed-transport", "posting-failed-transport",
+				transportReservation.reservationRequestId(), LedgerPostingOutcome.FAILED, null));
+
+		var saved = reservationRepository.findByReservationRequestId(transportReservation.reservationRequestId()).orElseThrow();
+		assertThat(saved.destinationAccountId()).isEqualTo(destinationAccountId);
+		assertThat(saved.transactionId()).isEqualTo(transactionId);
+		assertThat(saved.acceptedEventId()).isEqualTo(acceptedEventId);
+		assertThat(events).singleElement().satisfies(event -> {
+			assertThat(event.transactionId()).isEqualTo(transactionId);
+			assertThat(event.destinationAccountId()).isEqualTo(destinationAccountId.value());
+		});
+	}
+
+	private static PlatformTransactionManager noOpTransactionManager() {
+		return new PlatformTransactionManager() {
+			@Override
+			public TransactionStatus getTransaction(TransactionDefinition definition) {
+				return new SimpleTransactionStatus();
+			}
+
+			@Override
+			public void commit(TransactionStatus status) {
+			}
+
+			@Override
+			public void rollback(TransactionStatus status) {
+			}
+		};
 	}
 
 	@Test

@@ -266,7 +266,8 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
 		return new ReservationView(
 				reservation.reservationId(), reservation.accountId(), reservation.reservationRequestId(), reservation.currency(),
 				reservation.amount(), reservation.correlationId(), reservation.causationId(), status, reservation.expiresAt(),
-				reservation.version(), reservation.createdAt(), now, ledgerPostingId, reversedByLedgerPostingId);
+				reservation.version(), reservation.createdAt(), now, ledgerPostingId, reversedByLedgerPostingId,
+				reservation.destinationAccountId(), reservation.transactionId(), reservation.acceptedEventId());
 	}
 
 	private <T> T executeInTransaction(Supplier<T> operation) {
