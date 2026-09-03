@@ -72,19 +72,19 @@ kubectl config current-context
 helm version --short
 ```
 
-## Test
+## Test And Quality Gate
 
-Run the complete Maven test suite from the repository root:
+Use these commands from the repository root:
 
 ```bash
 ./mvnw test
-```
-
-Run unit and Testcontainers integration verification:
-
-```bash
+./mvnw spotless:apply
 ./mvnw verify
 ```
+
+- `./mvnw test` runs the fast unit-test phase.
+- `./mvnw spotless:apply` rewrites Java and repository text files to the enforced formatting.
+- `./mvnw verify` is the full local quality gate. It runs formatting checks, unit tests, integration tests, and generates the JaCoCo coverage report under `target/site/jacoco/`.
 
 Tests disable the external Config Server dependency so the build remains deterministic.
 
