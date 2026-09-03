@@ -1,40 +1,32 @@
 package com.digitalbank.accountservice.adapter.in.web;
 
-import java.util.List;
-
 import com.digitalbank.accountservice.application.port.in.PaginatedAccountProfiles;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 
 @Schema(description = "Paginated account search result")
 record AccountPageResponse(
-		@Schema(description = "Returned account page")
-		List<AccountResponse> items,
+        @Schema(description = "Returned account page") List<AccountResponse> items,
 
-		@Schema(description = "Zero-based page number")
-		int pageNumber,
+        @Schema(description = "Zero-based page number") int pageNumber,
 
-		@Schema(description = "Effective page size")
-		int pageSize,
+        @Schema(description = "Effective page size") int pageSize,
 
-		@Schema(description = "Total number of matching accounts")
-		long totalElements,
+        @Schema(description = "Total number of matching accounts")
+        long totalElements,
 
-		@Schema(description = "Total number of pages")
-		int totalPages,
+        @Schema(description = "Total number of pages") int totalPages,
 
-		@Schema(description = "Whether this is the last page")
-		boolean last) {
+        @Schema(description = "Whether this is the last page")
+        boolean last) {
 
-	static AccountPageResponse from(PaginatedAccountProfiles page) {
-		return new AccountPageResponse(
-				page.items().stream()
-						.map(AccountResponse::from)
-						.toList(),
-				page.pageNumber(),
-				page.pageSize(),
-				page.totalElements(),
-				page.totalPages(),
-				page.last());
-	}
+    static AccountPageResponse from(PaginatedAccountProfiles page) {
+        return new AccountPageResponse(
+                page.items().stream().map(AccountResponse::from).toList(),
+                page.pageNumber(),
+                page.pageSize(),
+                page.totalElements(),
+                page.totalPages(),
+                page.last());
+    }
 }

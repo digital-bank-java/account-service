@@ -4,20 +4,20 @@ import com.digitalbank.accountservice.domain.model.AccountId;
 
 public class AccountCurrencyMismatchException extends RuntimeException {
 
-	private final AccountId accountId;
-	private final String currency;
+    private final AccountId accountId;
+    private final String currency;
 
-	public AccountCurrencyMismatchException(AccountId accountId, String currency) {
-		super("Reservation currency does not match account currency");
-		this.accountId = accountId;
-		this.currency = currency;
-	}
+    public AccountCurrencyMismatchException(AccountId accountId, String currency) {
+        super("Reservation currency does not match account currency");
+        this.accountId = accountId;
+        this.currency = currency;
+    }
 
-	public AccountId accountId() {
-		return accountId;
-	}
+    public AccountId accountId() {
+        return accountId;
+    }
 
-	public String currency() {
-		return currency;
-	}
+    public String currency() {
+        return currency;
+    }
 }
