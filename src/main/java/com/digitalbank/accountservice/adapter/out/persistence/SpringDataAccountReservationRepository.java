@@ -4,17 +4,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-interface SpringDataAccountReservationRepository
-		extends JpaRepository<AccountReservationJpaEntity, UUID> {
+interface SpringDataAccountReservationRepository extends JpaRepository<AccountReservationJpaEntity, UUID> {
 
-	Optional<AccountReservationJpaEntity> findByReservationRequestId(String reservationRequestId);
+    Optional<AccountReservationJpaEntity> findByReservationRequestId(String reservationRequestId);
 
-	@Query(value = """
+    @Query(value = """
 			select *
 			from account_reservations
 			where status = 'ACTIVE' and expires_at <= :expiresBy
@@ -22,7 +20,6 @@ interface SpringDataAccountReservationRepository
 			for update skip locked
 			limit :limit
 			""", nativeQuery = true)
-	List<AccountReservationJpaEntity> findExpiredActiveForUpdate(
-			@Param("expiresBy") Instant expiresBy,
-			@Param("limit") int limit);
+    List<AccountReservationJpaEntity> findExpiredActiveForUpdate(
+            @Param("expiresBy") Instant expiresBy, @Param("limit") int limit);
 }
