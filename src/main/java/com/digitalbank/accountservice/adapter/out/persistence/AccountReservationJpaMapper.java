@@ -30,7 +30,33 @@ final class AccountReservationJpaMapper {
 				command.expiresAt(),
 				0L,
 				now,
-				now);
+				now,
+				null,
+				null,
+				command.destinationAccountId() == null ? null : command.destinationAccountId().value(),
+				command.transactionId(),
+				command.acceptedEventId());
+	}
+
+	static AccountReservationJpaEntity toEntity(ReservationView reservation) {
+		return new AccountReservationJpaEntity(
+				reservation.reservationId(),
+				reservation.accountId().value(),
+				reservation.reservationRequestId(),
+				reservation.currency(),
+				reservation.amount(),
+				reservation.correlationId(),
+				reservation.causationId(),
+				reservation.status(),
+				reservation.expiresAt(),
+				reservation.version(),
+				reservation.createdAt(),
+				reservation.updatedAt(),
+				reservation.ledgerPostingId(),
+				reservation.reversedByLedgerPostingId(),
+				reservation.destinationAccountId() == null ? null : reservation.destinationAccountId().value(),
+				reservation.transactionId(),
+				reservation.acceptedEventId());
 	}
 
 	static ReservationView toView(AccountReservationJpaEntity entity) {
@@ -46,6 +72,11 @@ final class AccountReservationJpaMapper {
 				entity.expiresAt(),
 				entity.version(),
 				entity.createdAt(),
-				entity.updatedAt());
+				entity.updatedAt(),
+				entity.ledgerPostingId(),
+				entity.reversedByLedgerPostingId(),
+				entity.destinationAccountId() == null ? null : new AccountId(entity.destinationAccountId()),
+				entity.transactionId(),
+				entity.acceptedEventId());
 	}
 }

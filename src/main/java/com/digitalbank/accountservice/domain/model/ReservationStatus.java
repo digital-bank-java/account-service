@@ -1,5 +1,9 @@
 package com.digitalbank.accountservice.domain.model;
 
 public enum ReservationStatus {
-	ACTIVE
+	ACTIVE,
+	EXPIRED,
+	COMMITTED,
+	RELEASED,
+	REVERSED
 }

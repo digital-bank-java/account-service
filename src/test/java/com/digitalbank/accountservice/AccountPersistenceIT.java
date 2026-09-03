@@ -28,11 +28,19 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
+import com.digitalbank.accountservice.application.port.out.AccountInboxEventRepository;
 import com.digitalbank.accountservice.application.port.out.AccountReservationRepository;
+import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcome;
+import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcomeCommand;
+import com.digitalbank.accountservice.application.port.in.GovernedLedgerPostingEvent;
 import com.digitalbank.accountservice.application.port.in.ReservationView;
 import com.digitalbank.accountservice.application.port.in.ReserveFundsCommand;
 import com.digitalbank.accountservice.application.service.AccountService;
+import com.digitalbank.accountservice.application.service.AccountLedgerOutcomeService;
 import com.digitalbank.accountservice.application.service.AccountReservationService;
+import com.digitalbank.accountservice.application.service.AccountReservationExpiryService;
+import com.digitalbank.accountservice.application.service.LedgerPostingEventMapper;
+import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEventException;
 import com.digitalbank.accountservice.domain.exception.InsufficientAvailableBalanceException;
 import com.digitalbank.accountservice.domain.exception.OptimisticLockConflictException;
 import com.digitalbank.accountservice.domain.model.Account;
@@ -64,7 +72,19 @@ class AccountPersistenceIT {
 	private AccountReservationService reservationService;
 
 	@Autowired
+	private AccountReservationExpiryService reservationExpiryService;
+
+	@Autowired
 	private TestAccountReservationRepository testReservationRepository;
+
+	@Autowired
+	private AccountLedgerOutcomeService ledgerOutcomeService;
+
+	@Autowired
+	private LedgerPostingEventMapper ledgerPostingEventMapper;
+
+	@Autowired
+	private TestAccountInboxEventRepository testInboxEventRepository;
 
 	@Test
 	void opensAndLoadsAccount() {
@@ -235,6 +255,179 @@ class AccountPersistenceIT {
 		});
 	}
 
+	@Test
+	void persistsCompletedOutcomeAndReplaysDuplicateDelivery() {
+		var account = fundedAccount("ledger-complete");
+		var reservation = reservationService.reserve(reservationCommand(account, "ledger-complete-request", "25.00"));
+		var command = new LedgerPostingOutcomeCommand(
+				"ledger-complete-event",
+				"ledger-complete-posting",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.COMPLETED,
+				null);
+
+		var first = ledgerOutcomeService.handle(command);
+		var replay = ledgerOutcomeService.handle(command);
+
+		assertThat(first.duplicate()).isFalse();
+		assertThat(replay.duplicate()).isTrue();
+		assertThat(accountService.findById(account.id())).hasValueSatisfying(saved -> {
+			assertThat(saved.currentBalance()).isEqualByComparingTo("75.00");
+			assertThat(saved.availableBalance()).isEqualByComparingTo("75.00");
+		});
+		assertThat(reservationRepository.findByReservationRequestId(reservation.reservationRequestId()))
+				.hasValueSatisfying(saved -> {
+					assertThat(saved.status()).isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.COMMITTED);
+					assertThat(saved.ledgerPostingId()).isEqualTo("ledger-complete-posting");
+				});
+		assertThat(testInboxEventRepository.findByEventId(command.eventId())).isPresent();
+	}
+
+	@Test
+	void commitsValidGovernedCompletionAndRejectsInvalidCurrencyWithoutMutation() {
+		var account = fundedAccount("ledger-kafka-mapper");
+		var reservation = reservationService.reserve(reservationCommand(account, "ledger-kafka-mapper-request", "25.00"));
+		var validEvent = completedEvent(account, reservation, "AED");
+
+		var result = ledgerOutcomeService.handle(ledgerPostingEventMapper.toCommand(validEvent));
+
+		assertThat(result.reservationStatus()).isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.COMMITTED);
+		assertThat(accountService.findById(account.id()).orElseThrow().currentBalance()).isEqualByComparingTo("75.00");
+
+		var invalidAccount = fundedAccount("ledger-kafka-invalid");
+		var invalidReservation = reservationService.reserve(reservationCommand(
+				invalidAccount, "ledger-kafka-invalid-request", "25.00"));
+		var invalidEvent = completedEvent(invalidAccount, invalidReservation, "USD");
+
+		assertThatThrownBy(() -> ledgerPostingEventMapper.toCommand(invalidEvent))
+				.isInstanceOf(InvalidLedgerPostingEventException.class);
+		assertThat(accountService.findById(invalidAccount.id()).orElseThrow().currentBalance()).isEqualByComparingTo("100.00");
+		assertThat(reservationRepository.findByReservationRequestId(invalidReservation.reservationRequestId()).orElseThrow().status())
+				.isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.ACTIVE);
+		assertThat(testInboxEventRepository.findByEventId(invalidEvent.metadata().eventId().toString())).isEmpty();
+	}
+
+	@Test
+	void persistsFailureAndAppendOnlyReversalOutcome() {
+		var account = fundedAccount("ledger-reversal");
+		var reservation = reservationService.reserve(reservationCommand(account, "ledger-reversal-request", "25.00"));
+		var completed = new LedgerPostingOutcomeCommand(
+				"ledger-reversal-complete-event",
+				"ledger-reversal-original",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.COMPLETED,
+				null);
+		ledgerOutcomeService.handle(completed);
+
+		var reversed = ledgerOutcomeService.handle(new LedgerPostingOutcomeCommand(
+				"ledger-reversal-event",
+				"ledger-reversal-posting",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.REVERSED,
+				"ledger-reversal-original"));
+
+		assertThat(reversed.reservationStatus()).isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.REVERSED);
+		assertThat(accountService.findById(account.id())).hasValueSatisfying(saved -> {
+			assertThat(saved.currentBalance()).isEqualByComparingTo("100.00");
+			assertThat(saved.availableBalance()).isEqualByComparingTo("100.00");
+		});
+		assertThat(testInboxEventRepository.findByEventId("ledger-reversal-complete-event")).isPresent();
+		assertThat(testInboxEventRepository.findByEventId("ledger-reversal-event")).isPresent();
+	}
+
+	@Test
+	void persistsFailedOutcomeAndReleasesReservation() {
+		var account = fundedAccount("ledger-failed");
+		var reservation = reservationService.reserve(reservationCommand(account, "ledger-failed-request", "25.00"));
+
+		var result = ledgerOutcomeService.handle(new LedgerPostingOutcomeCommand(
+				"ledger-failed-event",
+				"ledger-failed-posting",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.FAILED,
+				null));
+
+		assertThat(result.reservationStatus()).isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.RELEASED);
+		assertThat(accountService.findById(account.id())).hasValueSatisfying(saved -> {
+			assertThat(saved.currentBalance()).isEqualByComparingTo("100.00");
+			assertThat(saved.availableBalance()).isEqualByComparingTo("100.00");
+		});
+		assertThat(reservationRepository.findByReservationRequestId(reservation.reservationRequestId()))
+				.hasValueSatisfying(saved -> assertThat(saved.ledgerPostingId()).isEqualTo("ledger-failed-posting"));
+		assertThat(testInboxEventRepository.findByEventId("ledger-failed-event")).isPresent();
+	}
+
+	@Test
+	void expiresPersistedHoldAndRejectsLateCompletionWithoutDebiting() {
+		var account = fundedAccount("reservation-expiry");
+		var heldAccount = accountRepository.save(new Account(
+				account.id(),
+				account.customerId(),
+				account.accountNumber(),
+				account.iban(),
+				account.type(),
+				account.currency(),
+				account.status(),
+				account.currentBalance(),
+				new BigDecimal("75.00"),
+				account.openingRequestId(),
+				account.version(),
+				account.createdAt(),
+				account.updatedAt(),
+				account.closedAt()));
+		var command = new ReserveFundsCommand(
+				"reservation-expiry-request",
+				heldAccount.id(),
+				"AED",
+				new BigDecimal("25.00"),
+				"reservation-expiry-correlation",
+				"reservation-expiry-causation",
+				FIXED_NOW.minusSeconds(1));
+		var reservation = reservationRepository.save(command, heldAccount, FIXED_NOW.minusSeconds(900));
+
+		assertThat(reservationExpiryService.expireDueReservations()).isOne();
+
+		assertThat(reservationRepository.findByReservationRequestId(reservation.reservationRequestId()))
+				.hasValueSatisfying(saved -> assertThat(saved.status())
+						.isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.EXPIRED));
+		assertThat(accountService.findById(account.id()).orElseThrow().availableBalance())
+				.isEqualByComparingTo("100.00");
+		assertThatThrownBy(() -> ledgerOutcomeService.handle(new LedgerPostingOutcomeCommand(
+				"reservation-expiry-event",
+				"reservation-expiry-posting",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.COMPLETED,
+				null)))
+				.isInstanceOf(com.digitalbank.accountservice.domain.exception.ReservationExpiredException.class);
+		assertThat(accountService.findById(account.id()).orElseThrow().currentBalance())
+				.isEqualByComparingTo("100.00");
+		assertThat(testInboxEventRepository.findByEventId("reservation-expiry-event")).isEmpty();
+	}
+
+	@Test
+	void rollsBackAccountAndReservationWhenInboxPersistenceFails() {
+		var account = fundedAccount("ledger-inbox-rollback");
+		var reservation = reservationService.reserve(reservationCommand(account, "ledger-inbox-rollback-request", "25.00"));
+		var before = accountService.findById(account.id()).orElseThrow();
+		testInboxEventRepository.failNextSave();
+
+		assertThatThrownBy(() -> ledgerOutcomeService.handle(new LedgerPostingOutcomeCommand(
+				"ledger-inbox-rollback-event",
+				"ledger-inbox-rollback-posting",
+				reservation.reservationRequestId(),
+				LedgerPostingOutcome.COMPLETED,
+				null))).isInstanceOf(TestInboxPersistenceException.class);
+
+		assertThat(accountService.findById(account.id())).hasValueSatisfying(after -> {
+			assertThat(after.currentBalance()).isEqualByComparingTo(before.currentBalance());
+			assertThat(after.availableBalance()).isEqualByComparingTo(before.availableBalance());
+		});
+		assertThat(reservationRepository.findByReservationRequestId(reservation.reservationRequestId()))
+				.hasValueSatisfying(after -> assertThat(after.status())
+						.isEqualTo(com.digitalbank.accountservice.domain.model.ReservationStatus.ACTIVE));
+		assertThat(testInboxEventRepository.findByEventId("ledger-inbox-rollback-event")).isEmpty();
+	}
+
 	private Object reserveAfter(CountDownLatch ready, ReserveFundsCommand command) {
 		try {
 			ready.await();
@@ -245,6 +438,26 @@ class AccountPersistenceIT {
 			Thread.currentThread().interrupt();
 			return exception;
 		}
+	}
+
+	private static GovernedLedgerPostingEvent.Completed completedEvent(
+			Account account,
+			ReservationView reservation,
+			String currency) {
+		var postingId = UUID.randomUUID();
+		return new GovernedLedgerPostingEvent.Completed(
+				new GovernedLedgerPostingEvent.Metadata(
+						UUID.randomUUID(), reservation.correlationId(), reservation.causationId(), "ledger-service", "1.0.0", FIXED_NOW),
+				postingId,
+				reservation.correlationId(),
+				reservation.reservationRequestId(),
+				postingId,
+				"posting-request-" + postingId,
+				null,
+				currency,
+				java.util.List.of(
+						new GovernedLedgerPostingEvent.Line(account.id().value(), "DEBIT", "25.00"),
+						new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), "CREDIT", "25.00")));
 	}
 
 	private Account fundedAccount(String label) {
@@ -295,6 +508,17 @@ class AccountPersistenceIT {
 		}
 	}
 
+	@TestConfiguration
+	static class InboxRepositoryTestConfiguration {
+
+		@Bean
+		@Primary
+		TestAccountInboxEventRepository testAccountInboxEventRepository(
+				@Qualifier("postgresAccountInboxEventRepository") AccountInboxEventRepository delegate) {
+			return new TestAccountInboxEventRepository(delegate);
+		}
+	}
+
 	private static final class TestAccountReservationRepository implements AccountReservationRepository {
 
 		private final AccountReservationRepository delegate;
@@ -314,11 +538,24 @@ class AccountPersistenceIT {
 		}
 
 		@Override
+		public java.util.List<ReservationView> findExpiredActiveForUpdate(Instant expiresBy, int limit) {
+			return delegate.findExpiredActiveForUpdate(expiresBy, limit);
+		}
+
+		@Override
 		public ReservationView save(ReserveFundsCommand command, Account account, Instant now) {
 			if (failNextSave.compareAndSet(true, false)) {
 				throw new TestReservationPersistenceException();
 			}
 			return delegate.save(command, account, now);
+		}
+
+		@Override
+		public ReservationView save(ReservationView reservation) {
+			if (failNextSave.compareAndSet(true, false)) {
+				throw new TestReservationPersistenceException();
+			}
+			return delegate.save(reservation);
 		}
 
 		void failNextSave() {
@@ -353,6 +590,44 @@ class AccountPersistenceIT {
 	}
 
 	private static final class TestReservationPersistenceException extends RuntimeException {
+	}
+
+	private static final class TestAccountInboxEventRepository implements AccountInboxEventRepository {
+
+		private final AccountInboxEventRepository delegate;
+		private final AtomicBoolean failNextSave = new AtomicBoolean();
+
+		private TestAccountInboxEventRepository(AccountInboxEventRepository delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public java.util.Optional<com.digitalbank.accountservice.application.port.in.InboxEventView> findByEventId(
+				String eventId) {
+			return delegate.findByEventId(eventId);
+		}
+
+		@Override
+		public java.util.Optional<com.digitalbank.accountservice.application.port.in.InboxEventView> findByLedgerPostingId(
+				String ledgerPostingId) {
+			return delegate.findByLedgerPostingId(ledgerPostingId);
+		}
+
+		@Override
+		public com.digitalbank.accountservice.application.port.in.InboxEventView save(
+				LedgerPostingOutcomeCommand command, Instant processedAt) {
+			if (failNextSave.compareAndSet(true, false)) {
+				throw new TestInboxPersistenceException();
+			}
+			return delegate.save(command, processedAt);
+		}
+
+		void failNextSave() {
+			failNextSave.set(true);
+		}
+	}
+
+	private static final class TestInboxPersistenceException extends RuntimeException {
 	}
 
 	@TestConfiguration

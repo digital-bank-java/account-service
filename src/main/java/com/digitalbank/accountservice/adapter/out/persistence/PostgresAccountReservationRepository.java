@@ -1,6 +1,7 @@
 package com.digitalbank.accountservice.adapter.out.persistence;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
@@ -25,8 +26,21 @@ class PostgresAccountReservationRepository implements AccountReservationReposito
 	}
 
 	@Override
+	public List<ReservationView> findExpiredActiveForUpdate(Instant expiresBy, int limit) {
+		return repository.findExpiredActiveForUpdate(expiresBy, limit).stream()
+				.map(AccountReservationJpaMapper::toView)
+				.toList();
+	}
+
+	@Override
 	public ReservationView save(ReserveFundsCommand command, Account account, Instant now) {
 		return AccountReservationJpaMapper.toView(
 				repository.saveAndFlush(AccountReservationJpaMapper.toEntity(command, account, now)));
+	}
+
+	@Override
+	public ReservationView save(ReservationView reservation) {
+		return AccountReservationJpaMapper.toView(
+				repository.saveAndFlush(AccountReservationJpaMapper.toEntity(reservation)));
 	}
 }

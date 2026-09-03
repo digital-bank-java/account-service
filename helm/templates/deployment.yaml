@@ -35,6 +35,36 @@ spec:
               value: {{ .Values.runtime.configServerUrl | quote }}
             - name: SPRING_PROFILES_ACTIVE
               value: {{ .Values.runtime.profile | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_ENABLED
+              value: {{ .Values.ledgerKafka.enabled | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.ledgerKafka.bootstrapServers | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_SECURITY_PROTOCOL
+              value: {{ .Values.ledgerKafka.securityProtocol | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_ALLOW_INSECURE_TRANSPORT
+              value: {{ .Values.ledgerKafka.allowInsecureTransport | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_COMPLETED_TOPIC
+              value: {{ .Values.ledgerKafka.completedTopic | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_FAILED_TOPIC
+              value: {{ .Values.ledgerKafka.failedTopic | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_GROUP_ID
+              value: {{ .Values.ledgerKafka.groupId | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_RETRY_ATTEMPTS
+              value: {{ .Values.ledgerKafka.retryAttempts | quote }}
+            - name: ACCOUNT_LEDGER_KAFKA_RETRY_DELAY_MS
+              value: {{ .Values.ledgerKafka.retryDelayMs | quote }}
+            - name: ACCOUNT_RESERVATION_KAFKA_ENABLED
+              value: {{ .Values.reservationKafka.enabled | quote }}
+            - name: ACCOUNT_RESERVATION_KAFKA_ALLOW_INSECURE_TRANSPORT
+              value: {{ .Values.reservationKafka.allowInsecureTransport | quote }}
+            - name: ACCOUNT_RESERVATION_EXPIRY_ENABLED
+              value: {{ .Values.reservationExpiry.enabled | quote }}
+            - name: ACCOUNT_RESERVATION_EXPIRY_BATCH_SIZE
+              value: {{ .Values.reservationExpiry.batchSize | quote }}
+            - name: ACCOUNT_RESERVATION_EXPIRY_SWEEP_DELAY_MS
+              value: {{ .Values.reservationExpiry.sweepDelayMs | quote }}
+            - name: ACCOUNT_RESERVATION_EXPIRY_INITIAL_DELAY_MS
+              value: {{ .Values.reservationExpiry.initialDelayMs | quote }}
             - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
