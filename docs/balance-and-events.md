@@ -20,18 +20,19 @@ The target ownership model is:
 
 ## Implemented Account-Side Outcome Boundary
 
-The reservation foundation and account-side ledger outcome handler are transport-neutral application behavior. The handler accepts `eventId`, `ledgerPostingId`, `reservationRequestId`, an outcome of `COMPLETED`, `FAILED`, or `REVERSED`, and an optional original posting reference. It uses the persisted reservation as the authority for account, currency, and amount.
+The reservation foundation and account-side ledger outcome handler are transport-neutral application behavior. The handler accepts `eventId`, `ledgerPostingId`, `reservationRequestId`, an outcome of `COMPLETED`, `FAILED`, or `REVERSED`, an optional original posting reference, and (for a transfer) the persisted destination account id. It uses the persisted reservation as the authority for account, currency, amount, and transfer destination.
 
 The implemented transitions are:
 
 - `ACTIVE` + `COMPLETED` -> `COMMITTED`, decreasing current balance by the reserved amount.
+- `ACTIVE` + `COMPLETED` for a transfer -> `COMMITTED`, decreasing the source current balance and increasing the destination current and available balances by the posted amount.
 - `ACTIVE` + `FAILED` -> `RELEASED`, restoring available balance by the reserved amount.
-- `COMMITTED` + `REVERSED` -> `REVERSED`, restoring current and available balance by the reserved amount.
+- `COMMITTED` + `REVERSED` -> `REVERSED`, restoring source current and available balance and decreasing the destination current and available balances by the reversed amount.
 - Due `ACTIVE` -> `EXPIRED`, restoring available balance through a scheduled transactional sweeper.
 
 New reservations and ledger-driven monetary outcomes require an `ACTIVE` account. `SUSPENDED` and `CLOSED` accounts reject reserve, complete, fail/release, and reverse operations. Expiry cleanup is the sole lifecycle exception because stale holds must be removed even when an account is not active. Completed outcomes processed at or after reservation expiry are rejected without a debit.
 
-The transition and `account_inbox_events` insert share one database transaction. Event ID and ledger posting correlation replays are explicit no-ops; conflicting payloads and out-of-order reversals are rejected. The final Kafka event schema is intentionally not claimed here and must be mapped by a later adapter after `.github#137` / `ledger-service#14`.
+The source update, destination update, reservation transition, and `account_inbox_events` insert share one database transaction. Event ID and ledger posting correlation replays are explicit no-ops; conflicting payloads and out-of-order reversals are rejected. Destination credit/debit lines must match the persisted transfer destination, amount, and currency. The final Kafka event schema is intentionally not claimed here and must be mapped by a later adapter after `.github#137` / `ledger-service#14`.
 
 ## Why Public Balance Mutation APIs Are Not Allowed
 
