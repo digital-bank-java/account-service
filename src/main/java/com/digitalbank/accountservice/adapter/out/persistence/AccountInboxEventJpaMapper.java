@@ -15,6 +15,9 @@ final class AccountInboxEventJpaMapper {
                 command.reservationRequestId(),
                 command.outcome(),
                 command.originalPostingId(),
+                command.destinationAccountId() == null
+                        ? null
+                        : command.destinationAccountId().value(),
                 processedAt);
     }
 
@@ -25,6 +28,9 @@ final class AccountInboxEventJpaMapper {
                 entity.reservationRequestId(),
                 entity.outcome(),
                 entity.originalPostingId(),
+                entity.destinationAccountId() == null
+                        ? null
+                        : new com.digitalbank.accountservice.domain.model.AccountId(entity.destinationAccountId()),
                 entity.processedAt());
     }
 }

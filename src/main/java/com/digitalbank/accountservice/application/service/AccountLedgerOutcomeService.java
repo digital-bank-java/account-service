@@ -10,6 +10,7 @@ import com.digitalbank.accountservice.application.port.out.AccountInboxEventRepo
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
 import com.digitalbank.accountservice.application.port.out.AccountReservationEventOutbox;
 import com.digitalbank.accountservice.application.port.out.AccountReservationRepository;
+import com.digitalbank.accountservice.domain.exception.InsufficientAvailableBalanceException;
 import com.digitalbank.accountservice.domain.exception.InsufficientCurrentBalanceException;
 import com.digitalbank.accountservice.domain.exception.LedgerPostingOutcomeConflictException;
 import com.digitalbank.accountservice.domain.exception.OptimisticLockConflictException;
@@ -131,12 +132,16 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
                 .findById(reservation.accountId())
                 .orElseThrow(() -> new IllegalStateException("Account for reservation is missing"));
         account.requireActiveForMonetaryOperation("apply ledger outcome " + command.outcome());
+        var destinationAccount = loadDestinationAccount(command, reservation);
         var now = clock.instant();
-        var updated = transition(command, reservation, account, now);
+        var updated = transition(command, reservation, account, destinationAccount, now);
 
         try {
             reservationRepository.save(updated.reservation());
             accountRepository.save(updated.account());
+            if (updated.destinationAccount() != null) {
+                accountRepository.save(updated.destinationAccount());
+            }
             inboxEventRepository.save(command, now);
             if (reservationEventOutbox != null
                     && command.outcome() == LedgerPostingOutcome.FAILED
@@ -183,7 +188,8 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
         if (!event.ledgerPostingId().equals(command.ledgerPostingId())
                 || !event.reservationRequestId().equals(command.reservationRequestId())
                 || event.outcome() != command.outcome()
-                || !java.util.Objects.equals(event.originalPostingId(), command.originalPostingId())) {
+                || !java.util.Objects.equals(event.originalPostingId(), command.originalPostingId())
+                || !java.util.Objects.equals(event.destinationAccountId(), command.destinationAccountId())) {
             throw new LedgerPostingOutcomeConflictException("Ledger posting id already contains a different outcome");
         }
         return resultForReplay(command, event.reservationRequestId());
@@ -198,7 +204,11 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
     }
 
     private static Transition transition(
-            LedgerPostingOutcomeCommand command, ReservationView reservation, Account account, Instant now) {
+            LedgerPostingOutcomeCommand command,
+            ReservationView reservation,
+            Account account,
+            Account destinationAccount,
+            Instant now) {
         if (command.outcome() == LedgerPostingOutcome.COMPLETED
                 && (reservation.status() == ReservationStatus.EXPIRED
                         || (reservation.status() == ReservationStatus.ACTIVE
@@ -206,18 +216,22 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
             throw new ReservationExpiredException(reservation.reservationRequestId(), reservation.expiresAt());
         }
         return switch (command.outcome()) {
-            case COMPLETED -> commit(command, reservation, account, now);
+            case COMPLETED -> commit(command, reservation, account, destinationAccount, now);
             case FAILED -> release(command, reservation, account, now);
-            case REVERSED -> reverse(command, reservation, account, now);
+            case REVERSED -> reverse(command, reservation, account, destinationAccount, now);
         };
     }
 
     private static Transition commit(
-            LedgerPostingOutcomeCommand command, ReservationView reservation, Account account, Instant now) {
+            LedgerPostingOutcomeCommand command,
+            ReservationView reservation,
+            Account account,
+            Account destinationAccount,
+            Instant now) {
         if (reservation.status() != ReservationStatus.ACTIVE) {
             if (reservation.status() == ReservationStatus.COMMITTED
                     && command.ledgerPostingId().equals(reservation.ledgerPostingId())) {
-                return new Transition(account, reservation);
+                return new Transition(account, null, reservation);
             }
             throw new ReservationStateConflictException(reservation.reservationRequestId(), reservation.status());
         }
@@ -230,6 +244,13 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
                         account.currentBalance().subtract(reservation.amount()),
                         account.availableBalance(),
                         now),
+                destinationAccount == null
+                        ? null
+                        : withBalances(
+                                destinationAccount,
+                                destinationAccount.currentBalance().add(reservation.amount()),
+                                destinationAccount.availableBalance().add(reservation.amount()),
+                                now),
                 withReservation(reservation, ReservationStatus.COMMITTED, command.ledgerPostingId(), null, now));
     }
 
@@ -238,7 +259,7 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
         if (reservation.status() != ReservationStatus.ACTIVE) {
             if (reservation.status() == ReservationStatus.RELEASED
                     && command.ledgerPostingId().equals(reservation.ledgerPostingId())) {
-                return new Transition(account, reservation);
+                return new Transition(account, null, reservation);
             }
             throw new ReservationStateConflictException(reservation.reservationRequestId(), reservation.status());
         }
@@ -248,19 +269,32 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
                         account.currentBalance(),
                         account.availableBalance().add(reservation.amount()),
                         now),
+                null,
                 withReservation(reservation, ReservationStatus.RELEASED, command.ledgerPostingId(), null, now));
     }
 
     private static Transition reverse(
-            LedgerPostingOutcomeCommand command, ReservationView reservation, Account account, Instant now) {
+            LedgerPostingOutcomeCommand command,
+            ReservationView reservation,
+            Account account,
+            Account destinationAccount,
+            Instant now) {
         if (reservation.status() == ReservationStatus.REVERSED
                 && command.ledgerPostingId().equals(reservation.reversedByLedgerPostingId())
                 && command.originalPostingId().equals(reservation.ledgerPostingId())) {
-            return new Transition(account, reservation);
+            return new Transition(account, null, reservation);
         }
         if (reservation.status() != ReservationStatus.COMMITTED
                 || !command.originalPostingId().equals(reservation.ledgerPostingId())) {
             throw new ReservationStateConflictException(reservation.reservationRequestId(), reservation.status());
+        }
+        if (destinationAccount != null) {
+            if (destinationAccount.currentBalance().compareTo(reservation.amount()) < 0) {
+                throw new InsufficientCurrentBalanceException(destinationAccount.id(), reservation.amount());
+            }
+            if (destinationAccount.availableBalance().compareTo(reservation.amount()) < 0) {
+                throw new InsufficientAvailableBalanceException(destinationAccount.id(), reservation.amount());
+            }
         }
         return new Transition(
                 withBalances(
@@ -268,6 +302,13 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
                         account.currentBalance().add(reservation.amount()),
                         account.availableBalance().add(reservation.amount()),
                         now),
+                destinationAccount == null
+                        ? null
+                        : withBalances(
+                                destinationAccount,
+                                destinationAccount.currentBalance().subtract(reservation.amount()),
+                                destinationAccount.availableBalance().subtract(reservation.amount()),
+                                now),
                 withReservation(
                         reservation,
                         ReservationStatus.REVERSED,
@@ -321,6 +362,25 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
                 reservation.acceptedEventId());
     }
 
+    private Account loadDestinationAccount(LedgerPostingOutcomeCommand command, ReservationView reservation) {
+        var destinationAccountId = command.destinationAccountId();
+        if (destinationAccountId == null) {
+            return null;
+        }
+        if (!destinationAccountId.equals(reservation.destinationAccountId())
+                || destinationAccountId.equals(reservation.accountId())) {
+            throw new LedgerPostingOutcomeConflictException("Ledger outcome destination does not match reservation");
+        }
+        var destinationAccount = accountRepository
+                .findById(destinationAccountId)
+                .orElseThrow(() -> new IllegalStateException("Destination account for reservation is missing"));
+        destinationAccount.requireActiveForMonetaryOperation("apply ledger outcome " + command.outcome());
+        if (!destinationAccount.currency().equals(reservation.currency())) {
+            throw new LedgerPostingOutcomeConflictException("Destination account currency does not match reservation");
+        }
+        return destinationAccount;
+    }
+
     private <T> T executeInTransaction(Supplier<T> operation) {
         if (transactionOperations == null) {
             return operation.get();
@@ -328,5 +388,5 @@ public class AccountLedgerOutcomeService implements LedgerPostingOutcomeInputPor
         return transactionOperations.execute(status -> operation.get());
     }
 
-    private record Transition(Account account, ReservationView reservation) {}
+    private record Transition(Account account, Account destinationAccount, ReservationView reservation) {}
 }

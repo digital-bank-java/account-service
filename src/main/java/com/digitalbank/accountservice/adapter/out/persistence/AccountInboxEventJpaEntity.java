@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "account_inbox_events")
@@ -30,6 +31,9 @@ class AccountInboxEventJpaEntity {
     @Column(name = "original_posting_id", length = 100)
     private String originalPostingId;
 
+    @Column(name = "destination_account_id")
+    private UUID destinationAccountId;
+
     @Column(name = "processed_at", nullable = false)
     private Instant processedAt;
 
@@ -41,12 +45,14 @@ class AccountInboxEventJpaEntity {
             String reservationRequestId,
             LedgerPostingOutcome outcome,
             String originalPostingId,
+            UUID destinationAccountId,
             Instant processedAt) {
         this.eventId = eventId;
         this.ledgerPostingId = ledgerPostingId;
         this.reservationRequestId = reservationRequestId;
         this.outcome = outcome;
         this.originalPostingId = originalPostingId;
+        this.destinationAccountId = destinationAccountId;
         this.processedAt = processedAt;
     }
 
@@ -68,6 +74,10 @@ class AccountInboxEventJpaEntity {
 
     String originalPostingId() {
         return originalPostingId;
+    }
+
+    UUID destinationAccountId() {
+        return destinationAccountId;
     }
 
     Instant processedAt() {

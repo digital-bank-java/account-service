@@ -44,7 +44,7 @@ public class LedgerPostingEventMapper {
         };
     }
 
-    private static LedgerPostingOutcomeCommand completedCommand(
+    private LedgerPostingOutcomeCommand completedCommand(
             GovernedLedgerPostingEvent.Completed completed,
             com.digitalbank.accountservice.application.port.in.ReservationView reservation,
             com.digitalbank.accountservice.domain.model.Account account) {
@@ -74,11 +74,34 @@ public class LedgerPostingEventMapper {
                             ? "Reversal completed posting must contain one credit line matching the reservation account and amount"
                             : "Completed posting must contain one debit line matching the reservation account and amount");
         }
+        var destinationAccountId = reservation.destinationAccountId();
+        if (destinationAccountId != null) {
+            var destinationLineType = isReversal ? "DEBIT" : "CREDIT";
+            var matchingDestinationLines = completed.lines().stream()
+                    .filter(line -> line.accountId().equals(destinationAccountId.value()))
+                    .filter(line -> destinationLineType.equals(line.lineType()))
+                    .filter(line -> new java.math.BigDecimal(line.amount()).compareTo(reservation.amount()) == 0)
+                    .count();
+            if (destinationAccountId.equals(reservation.accountId()) || matchingDestinationLines != 1) {
+                throw new InvalidLedgerPostingEventException(
+                        isReversal
+                                ? "Reversal completed posting must contain one debit line matching the destination account and amount"
+                                : "Completed posting must contain one credit line matching the destination account and amount");
+            }
+            var destinationAccount = accountRepository
+                    .findById(destinationAccountId)
+                    .orElseThrow(() ->
+                            new InvalidLedgerPostingEventException("Destination account for reservation is missing"));
+            if (!destinationAccount.currency().equals(reservation.currency())) {
+                throw new InvalidLedgerPostingEventException("Destination account currency must match the reservation");
+            }
+        }
         return new LedgerPostingOutcomeCommand(
                 completed.metadata().eventId().toString(),
                 completed.postingId().toString(),
                 completed.reservationRequestId(),
                 isReversal ? LedgerPostingOutcome.REVERSED : LedgerPostingOutcome.COMPLETED,
-                isReversal ? completed.reversalOfLedgerEntryId().toString() : null);
+                isReversal ? completed.reversalOfLedgerEntryId().toString() : null,
+                destinationAccountId);
     }
 }

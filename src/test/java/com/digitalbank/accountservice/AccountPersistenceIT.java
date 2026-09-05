@@ -318,6 +318,60 @@ class AccountPersistenceIT {
     }
 
     @Test
+    void creditsDestinationAccountExactlyOnceForGovernedCompletion() {
+        var source = fundedAccount("ledger-destination-source");
+        var destination = fundedAccount("ledger-destination-target");
+        var reservation = reservationService.reserve(new ReserveFundsCommand(
+                "ledger-destination-request",
+                source.id(),
+                destination.id(),
+                UUID.randomUUID(),
+                "AED",
+                new BigDecimal("25.00"),
+                "ledger-destination-correlation",
+                "ledger-destination-causation",
+                FIXED_NOW.plusSeconds(900),
+                UUID.randomUUID()));
+        var postingId = UUID.randomUUID();
+        var event = new GovernedLedgerPostingEvent.Completed(
+                new GovernedLedgerPostingEvent.Metadata(
+                        UUID.randomUUID(),
+                        reservation.correlationId(),
+                        reservation.causationId(),
+                        "ledger-service",
+                        "1.0.0",
+                        FIXED_NOW),
+                postingId,
+                reservation.correlationId(),
+                reservation.reservationRequestId(),
+                postingId,
+                "ledger-destination-posting-request",
+                null,
+                "AED",
+                java.util.List.of(
+                        new GovernedLedgerPostingEvent.Line(source.id().value(), "DEBIT", "25.00"),
+                        new GovernedLedgerPostingEvent.Line(destination.id().value(), "CREDIT", "25.00")));
+
+        var command = ledgerPostingEventMapper.toCommand(event);
+        var first = ledgerOutcomeService.handle(command);
+        var replay = ledgerOutcomeService.handle(command);
+
+        assertThat(first.duplicate()).isFalse();
+        assertThat(replay.duplicate()).isTrue();
+        assertThat(accountService.findById(source.id())).hasValueSatisfying(saved -> {
+            assertThat(saved.currentBalance()).isEqualByComparingTo("75.00");
+            assertThat(saved.availableBalance()).isEqualByComparingTo("75.00");
+        });
+        assertThat(accountService.findById(destination.id())).hasValueSatisfying(saved -> {
+            assertThat(saved.currentBalance()).isEqualByComparingTo("125.00");
+            assertThat(saved.availableBalance()).isEqualByComparingTo("125.00");
+        });
+        assertThat(testInboxEventRepository.findByEventId(command.eventId()))
+                .hasValueSatisfying(
+                        saved -> assertThat(saved.destinationAccountId()).isEqualTo(destination.id()));
+    }
+
+    @Test
     void persistsFailureAndAppendOnlyReversalOutcome() {
         var account = fundedAccount("ledger-reversal");
         var reservation = reservationService.reserve(reservationCommand(account, "ledger-reversal-request", "25.00"));
