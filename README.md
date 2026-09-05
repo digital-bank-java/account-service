@@ -301,3 +301,8 @@ git status
 helm lint helm --strict
 git diff --check
 ```
+
+## Operational Logging
+
+The service emits one-line ECS JSON console events and propagates the bounded
+`X-Correlation-ID` boundary defined in the organization [structured logging and redaction contract](https://github.com/digital-bank-java/.github/blob/main/docs/structured-logging-and-redaction.md). Request bodies, credentials, tokens, account data, and customer data are not logged.
