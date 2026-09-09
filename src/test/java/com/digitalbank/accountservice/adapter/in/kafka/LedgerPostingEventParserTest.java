@@ -55,6 +55,17 @@ class LedgerPostingEventParserTest {
     }
 
     @Test
+    void acceptsEquivalentOccurredAtPrecision() {
+        var payload = completedPayload()
+                .replace(
+                        "\"occurredAt\": \"" + OCCURRED_AT + "\"",
+                        "\"occurredAt\": \"2026-08-30T08:15:30.000000463Z\"");
+
+        assertThat(parser.parse(payload, headers("ledger-service"), "LedgerPostingCompleted.v1"))
+                .isInstanceOf(GovernedLedgerPostingEvent.Completed.class);
+    }
+
+    @Test
     void parsesGovernedFailedEventWhenRequiredHeadersMatchPayload() {
         var event = parser.parse(failedPayload(), headers("ledger-service"), "LedgerPostingFailed.v1");
 
