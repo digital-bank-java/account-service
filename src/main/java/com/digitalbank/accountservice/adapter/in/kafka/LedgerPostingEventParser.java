@@ -5,6 +5,7 @@ import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEvent
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,7 @@ public class LedgerPostingEventParser {
     private static final String FAILED_EVENT_TYPE = "LedgerPostingFailed.v1";
     private static final String EXPECTED_PRODUCER = "ledger-service";
     private static final String SUPPORTED_SCHEMA_VERSION = "1.0.0";
+    private static final Duration MAX_OCCURRED_AT_DRIFT = Duration.ofNanos(1_000);
 
     private final ObjectMapper objectMapper = new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
@@ -93,7 +95,10 @@ public class LedgerPostingEventParser {
                 || !causationId.equals(text(root, "causationId"))
                 || !producer.equals(text(root, "producer"))
                 || !schemaVersion.equals(text(root, "schemaVersion"))
-                || !occurredAt.equals(Instant.parse(text(root, "occurredAt")))) {
+                || Duration.between(occurredAt, Instant.parse(text(root, "occurredAt")))
+                                .abs()
+                                .compareTo(MAX_OCCURRED_AT_DRIFT)
+                        > 0) {
             throw new InvalidLedgerPostingEventException(
                     "Ledger event headers must match the governed payload metadata");
         }
