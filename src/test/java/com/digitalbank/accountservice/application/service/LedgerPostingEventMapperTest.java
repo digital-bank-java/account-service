@@ -46,6 +46,7 @@ class LedgerPostingEventMapperTest {
             NOW,
             NOW,
             null);
+    private static final UUID TRANSACTION_ID = UUID.fromString("0e5d3f5b-f9b1-4b8e-9cb2-df7f4dc6d6f3");
     private static final ReservationView RESERVATION = new ReservationView(
             UUID.randomUUID(),
             ACCOUNT.id(),
@@ -58,7 +59,12 @@ class LedgerPostingEventMapperTest {
             NOW.plusSeconds(900),
             0L,
             NOW,
-            NOW);
+            NOW,
+            null,
+            null,
+            null,
+            TRANSACTION_ID,
+            null);
 
     private final LedgerPostingEventMapper mapper = new LedgerPostingEventMapper(
             new InMemoryReservationRepository(RESERVATION), new InMemoryAccountRepository(ACCOUNT));
@@ -150,12 +156,61 @@ class LedgerPostingEventMapperTest {
                 .isInstanceOf(InvalidLedgerPostingEventException.class);
     }
 
+    @Test
+    void rejectsLedgerOutcomeWhoseIdentityDoesNotMatchTheReservation() {
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+        var mismatchedIdentity = new GovernedLedgerPostingEvent.Completed(
+                new GovernedLedgerPostingEvent.Metadata(
+                        event.metadata().eventId(),
+                        "different-transfer",
+                        event.metadata().causationId(),
+                        event.metadata().producer(),
+                        event.metadata().schemaVersion(),
+                        event.metadata().occurredAt()),
+                event.aggregateId(),
+                event.transactionId(),
+                event.reservationRequestId(),
+                event.postingId(),
+                event.postingRequestId(),
+                event.reversalOfLedgerEntryId(),
+                event.currency(),
+                event.lines());
+
+        assertThatThrownBy(() -> mapper.toCommand(mismatchedIdentity))
+                .isInstanceOf(InvalidLedgerPostingEventException.class)
+                .hasMessage("Ledger posting outcome identity must match the reservation metadata");
+    }
+
+    @Test
+    void rejectsAdditionalLedgerLinesWhenReservationHasNoDestination() {
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+        var multiLineEvent = new GovernedLedgerPostingEvent.Completed(
+                event.metadata(),
+                event.aggregateId(),
+                event.transactionId(),
+                event.reservationRequestId(),
+                event.postingId(),
+                event.postingRequestId(),
+                event.reversalOfLedgerEntryId(),
+                event.currency(),
+                java.util.stream.Stream.concat(
+                                event.lines().stream(),
+                                java.util.stream.Stream.of(
+                                        new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), "DEBIT", "1.0000")))
+                        .toList());
+
+        assertThatThrownBy(() -> mapper.toCommand(multiLineEvent))
+                .isInstanceOf(InvalidLedgerPostingEventException.class)
+                .hasMessage(
+                        "Completed posting without a destination reservation must contain exactly two ledger lines");
+    }
+
     private static GovernedLedgerPostingEvent.Completed completedEvent(UUID eventId, UUID postingId, String amount) {
         return new GovernedLedgerPostingEvent.Completed(
                 new GovernedLedgerPostingEvent.Metadata(
                         eventId, "transfer-58e271cd", "command-63ca8eb6", "ledger-service", "1.0.0", NOW),
                 postingId,
-                "transfer-58e271cd",
+                TRANSACTION_ID.toString(),
                 RESERVATION.reservationRequestId(),
                 postingId,
                 "posting-request-4d93c803",
@@ -173,7 +228,7 @@ class LedgerPostingEventMapperTest {
                 new GovernedLedgerPostingEvent.Metadata(
                         eventId, "transfer-58e271cd", "command-63ca8eb6", "ledger-service", "1.0.0", NOW),
                 postingId,
-                "transfer-58e271cd",
+                TRANSACTION_ID.toString(),
                 RESERVATION.reservationRequestId(),
                 postingId,
                 "posting-request-4d93c803",
