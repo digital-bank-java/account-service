@@ -32,6 +32,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -50,16 +51,19 @@ class AccountController {
     private final GetAccountInputPort getAccountInputPort;
     private final ListCustomerAccountsInputPort listCustomerAccountsInputPort;
     private final ListAccountsInputPort listAccountsInputPort;
+    private final AccountResourceAuthorization resourceAuthorization;
 
     AccountController(
             OpenAccountInputPort openAccountInputPort,
             GetAccountInputPort getAccountInputPort,
             ListCustomerAccountsInputPort listCustomerAccountsInputPort,
-            ListAccountsInputPort listAccountsInputPort) {
+            ListAccountsInputPort listAccountsInputPort,
+            AccountResourceAuthorization resourceAuthorization) {
         this.openAccountInputPort = openAccountInputPort;
         this.getAccountInputPort = getAccountInputPort;
         this.listCustomerAccountsInputPort = listCustomerAccountsInputPort;
         this.listAccountsInputPort = listAccountsInputPort;
+        this.resourceAuthorization = resourceAuthorization;
     }
 
     @PostMapping("/api/v1/accounts")
@@ -95,7 +99,9 @@ class AccountController {
                                             name = "account-conflict",
                                             summary = "Duplicate account request",
                                             value = ACCOUNT_CONFLICT_PROBLEM_EXAMPLE)))
-    ResponseEntity<AccountResponse> openAccount(@Valid @RequestBody OpenAccountRequest request) {
+    ResponseEntity<AccountResponse> openAccount(
+            @Valid @RequestBody OpenAccountRequest request, Authentication authentication) {
+        resourceAuthorization.requireCustomerAccess(request.customerId(), authentication);
         var profile = openAccountInputPort.openAccount(new OpenAccountCommand(
                 new CustomerId(request.customerId()),
                 request.accountNumber(),
@@ -131,8 +137,9 @@ class AccountController {
                                             name = "account-not-found",
                                             summary = "Account not found",
                                             value = ACCOUNT_NOT_FOUND_PROBLEM_EXAMPLE)))
-    ResponseEntity<AccountResponse> getAccount(@PathVariable UUID accountId) {
+    ResponseEntity<AccountResponse> getAccount(@PathVariable UUID accountId, Authentication authentication) {
         var profile = getAccountInputPort.getAccount(new AccountId(accountId));
+        resourceAuthorization.requireAccountAccess(accountId, UUID.fromString(profile.customerId()), authentication);
         return ResponseEntity.ok(AccountResponse.from(profile));
     }
 
@@ -145,7 +152,9 @@ class AccountController {
                     @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             array = @ArraySchema(schema = @Schema(implementation = AccountResponse.class))))
-    ResponseEntity<List<AccountResponse>> listCustomerAccounts(@PathVariable UUID customerId) {
+    ResponseEntity<List<AccountResponse>> listCustomerAccounts(
+            @PathVariable UUID customerId, Authentication authentication) {
+        resourceAuthorization.requireCustomerAccess(customerId, authentication);
         var accounts = listCustomerAccountsInputPort.listCustomerAccounts(new CustomerId(customerId)).stream()
                 .map(AccountResponse::from)
                 .toList();
