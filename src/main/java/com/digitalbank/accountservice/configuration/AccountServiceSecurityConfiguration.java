@@ -36,6 +36,8 @@ class AccountServiceSecurityConfiguration {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
                         .permitAll()
+                        .requestMatchers("/admin/**")
+                        .hasAuthority("SCOPE_admin.internal")
                         .anyRequest()
                         .authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
