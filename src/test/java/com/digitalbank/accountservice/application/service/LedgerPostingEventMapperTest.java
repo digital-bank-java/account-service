@@ -144,6 +144,108 @@ class LedgerPostingEventMapperTest {
     }
 
     @Test
+    void rejectsCompletedEventWhoseCorrelationDoesNotMatchTheReservation() {
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+        var wrongCorrelation = new GovernedLedgerPostingEvent.Completed(
+                new GovernedLedgerPostingEvent.Metadata(
+                        event.metadata().eventId(),
+                        "different-correlation",
+                        event.metadata().causationId(),
+                        event.metadata().producer(),
+                        event.metadata().schemaVersion(),
+                        event.metadata().occurredAt()),
+                event.aggregateId(),
+                event.transactionId(),
+                event.reservationRequestId(),
+                event.postingId(),
+                event.postingRequestId(),
+                event.reversalOfLedgerEntryId(),
+                event.currency(),
+                event.lines());
+
+        assertThatThrownBy(() -> mapper.toCommand(wrongCorrelation))
+                .isInstanceOf(InvalidLedgerPostingEventException.class);
+    }
+
+    @Test
+    void rejectsCompletedEventWithMultipleLinesForSourceOnlyReservation() {
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+        var extraLine = new GovernedLedgerPostingEvent.Completed(
+                event.metadata(),
+                event.aggregateId(),
+                event.transactionId(),
+                event.reservationRequestId(),
+                event.postingId(),
+                event.postingRequestId(),
+                event.reversalOfLedgerEntryId(),
+                event.currency(),
+                List.of(
+                        event.lines().get(0),
+                        event.lines().get(1),
+                        new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), "CREDIT", "10.0000"),
+                        new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), "DEBIT", "10.0000")));
+
+        assertThatThrownBy(() -> mapper.toCommand(extraLine))
+                .isInstanceOf(InvalidLedgerPostingEventException.class)
+                .hasMessageContaining("exactly one debit and one credit");
+    }
+
+    @Test
+    void rejectsCompletedEventThatCreditsTheReservedAccountWithoutADestinationReservation() {
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+        var sameAccountCredit = new GovernedLedgerPostingEvent.Completed(
+                event.metadata(),
+                event.aggregateId(),
+                event.transactionId(),
+                event.reservationRequestId(),
+                event.postingId(),
+                event.postingRequestId(),
+                event.reversalOfLedgerEntryId(),
+                event.currency(),
+                List.of(
+                        event.lines().get(0),
+                        new GovernedLedgerPostingEvent.Line(ACCOUNT.id().value(), "CREDIT", "125.5000")));
+
+        assertThatThrownBy(() -> mapper.toCommand(sameAccountCredit))
+                .isInstanceOf(InvalidLedgerPostingEventException.class)
+                .hasMessageContaining("two lines for the reserved account");
+    }
+
+    @Test
+    void rejectsCompletedEventWhoseTransactionDoesNotMatchTheReservation() {
+        var transactionId = UUID.randomUUID();
+        var reservation = reservationWith(transactionId, null);
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+        var mapper = mapperFor(reservation);
+        var wrongTransaction = new GovernedLedgerPostingEvent.Completed(
+                event.metadata(),
+                event.aggregateId(),
+                UUID.randomUUID().toString(),
+                event.reservationRequestId(),
+                event.postingId(),
+                event.postingRequestId(),
+                event.reversalOfLedgerEntryId(),
+                event.currency(),
+                event.lines());
+
+        assertThatThrownBy(() -> mapper.toCommand(wrongTransaction))
+                .isInstanceOf(InvalidLedgerPostingEventException.class)
+                .hasMessageContaining("transaction does not match");
+    }
+
+    @Test
+    void rejectsCompletedEventWhosePostingDoesNotMatchPersistedPostingIdentity() {
+        var expectedPostingId = UUID.randomUUID().toString();
+        var reservation = reservationWith(null, expectedPostingId);
+        var mapper = mapperFor(reservation);
+        var event = completedEvent(UUID.randomUUID(), UUID.randomUUID(), "125.5000");
+
+        assertThatThrownBy(() -> mapper.toCommand(event))
+                .isInstanceOf(InvalidLedgerPostingEventException.class)
+                .hasMessageContaining("posting does not match");
+    }
+
+    @Test
     void rejectsReversalCompletedEventWhoseReservedAccountLineIsDebit() {
         assertThatThrownBy(() -> mapper.toCommand(
                         reversalEvent(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "DEBIT")))
@@ -183,6 +285,32 @@ class LedgerPostingEventMapperTest {
                         new GovernedLedgerPostingEvent.Line(UUID.randomUUID(), counterpartyLineType, "125.5000"),
                         new GovernedLedgerPostingEvent.Line(
                                 ACCOUNT.id().value(), reservedAccountLineType, "125.5000")));
+    }
+
+    private LedgerPostingEventMapper mapperFor(ReservationView reservation) {
+        return new LedgerPostingEventMapper(
+                new InMemoryReservationRepository(reservation), new InMemoryAccountRepository(ACCOUNT));
+    }
+
+    private static ReservationView reservationWith(UUID transactionId, String ledgerPostingId) {
+        return new ReservationView(
+                RESERVATION.reservationId(),
+                RESERVATION.accountId(),
+                RESERVATION.reservationRequestId(),
+                RESERVATION.currency(),
+                RESERVATION.amount(),
+                RESERVATION.correlationId(),
+                RESERVATION.causationId(),
+                RESERVATION.status(),
+                RESERVATION.expiresAt(),
+                RESERVATION.version(),
+                RESERVATION.createdAt(),
+                RESERVATION.updatedAt(),
+                ledgerPostingId,
+                null,
+                RESERVATION.destinationAccountId(),
+                transactionId,
+                RESERVATION.acceptedEventId());
     }
 
     private static final class InMemoryReservationRepository implements AccountReservationRepository {
