@@ -53,6 +53,7 @@ class LedgerPostingKafkaListenerTest {
         var accountId = UUID.fromString("f5aa4b14-6616-4c84-b0d5-3f178cb50864");
         var reversalPostingId = UUID.fromString("72da40ad-55e6-4be0-a7d5-9046dd3e331c");
         var originalPostingId = UUID.fromString("83c5bb71-f59a-4f4c-8a6d-b89cbb6a8bb8");
+        var transactionId = UUID.fromString("0e5d3f5b-f9b1-4b8e-9cb2-df7f4dc6d6f3");
         var eventId = UUID.fromString("a1bbbc71-60e6-4a15-b020-f227c54eb80e");
         var occurredAt = Instant.parse("2026-08-31T00:00:00Z");
         var account = Account.open(
@@ -76,13 +77,18 @@ class LedgerPostingKafkaListenerTest {
                 occurredAt.plusSeconds(900),
                 0L,
                 occurredAt,
-                occurredAt);
+                occurredAt,
+                null,
+                null,
+                null,
+                transactionId,
+                null);
         var record = new ConsumerRecord<>(
                 "ledger.posting.completed.v1",
                 0,
                 0L,
                 "aggregate-001",
-                reversalPayload(eventId, occurredAt, reversalPostingId, originalPostingId, accountId));
+                reversalPayload(eventId, occurredAt, reversalPostingId, originalPostingId, accountId, transactionId));
         record.headers().add("event-id", eventId.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         record.headers().add("correlation-id", "transfer-58e271cd".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         record.headers().add("causation-id", "command-63ca8eb6".getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -108,7 +114,12 @@ class LedgerPostingKafkaListenerTest {
     }
 
     private static String reversalPayload(
-            UUID eventId, Instant occurredAt, UUID reversalPostingId, UUID originalPostingId, UUID reservedAccountId) {
+            UUID eventId,
+            Instant occurredAt,
+            UUID reversalPostingId,
+            UUID originalPostingId,
+            UUID reservedAccountId,
+            UUID transactionId) {
         return """
 				{
 				  "eventId": "%s",
@@ -119,7 +130,7 @@ class LedgerPostingKafkaListenerTest {
 				  "aggregateId": "%s",
 				  "correlationId": "transfer-58e271cd",
 				  "causationId": "command-63ca8eb6",
-				  "transactionId": "transfer-58e271cd",
+				  "transactionId": "%s",
 				  "reservationRequestId": "reservation-58e271cd",
 				  "postingId": "%s",
 				  "postingRequestId": "reversal-request-001",
@@ -131,7 +142,13 @@ class LedgerPostingKafkaListenerTest {
 				  ]
 				}
 				""".formatted(
-                eventId, occurredAt, reversalPostingId, reversalPostingId, originalPostingId, reservedAccountId);
+                        eventId,
+                        occurredAt,
+                        reversalPostingId,
+                        transactionId,
+                        reversalPostingId,
+                        originalPostingId,
+                        reservedAccountId);
     }
 
     private static GovernedLedgerPostingEvent.Completed completedEvent() {

@@ -3,10 +3,12 @@ package com.digitalbank.accountservice.application.service;
 import com.digitalbank.accountservice.application.port.in.GovernedLedgerPostingEvent;
 import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcome;
 import com.digitalbank.accountservice.application.port.in.LedgerPostingOutcomeCommand;
+import com.digitalbank.accountservice.application.port.in.ReservationView;
 import com.digitalbank.accountservice.application.port.out.AccountRepository;
 import com.digitalbank.accountservice.application.port.out.AccountReservationRepository;
 import com.digitalbank.accountservice.domain.exception.InvalidLedgerPostingEventException;
 import com.digitalbank.accountservice.domain.exception.ReservationNotFoundException;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +33,7 @@ public class LedgerPostingEventMapper {
         var account = accountRepository
                 .findById(reservation.accountId())
                 .orElseThrow(() -> new IllegalStateException("Account for reservation is missing"));
+        validateIdentity(event, reservation);
 
         return switch (event) {
             case GovernedLedgerPostingEvent.Completed completed -> completedCommand(completed, reservation, account);
@@ -75,6 +78,10 @@ public class LedgerPostingEventMapper {
                             : "Completed posting must contain one debit line matching the reservation account and amount");
         }
         var destinationAccountId = reservation.destinationAccountId();
+        if (destinationAccountId == null && completed.lines().size() != 2) {
+            throw new InvalidLedgerPostingEventException(
+                    "Completed posting without a destination reservation must contain exactly two ledger lines");
+        }
         if (destinationAccountId != null) {
             var destinationLineType = isReversal ? "DEBIT" : "CREDIT";
             var matchingDestinationLines = completed.lines().stream()
@@ -103,5 +110,22 @@ public class LedgerPostingEventMapper {
                 isReversal ? LedgerPostingOutcome.REVERSED : LedgerPostingOutcome.COMPLETED,
                 isReversal ? completed.reversalOfLedgerEntryId().toString() : null,
                 destinationAccountId);
+    }
+
+    private static void validateIdentity(GovernedLedgerPostingEvent event, ReservationView reservation) {
+        if (reservation.transactionId() == null
+                || !reservation.transactionId().toString().equals(eventTransactionId(event))
+                || !Objects.equals(reservation.correlationId(), event.metadata().correlationId())
+                || !Objects.equals(reservation.causationId(), event.metadata().causationId())) {
+            throw new InvalidLedgerPostingEventException(
+                    "Ledger posting outcome identity must match the reservation metadata");
+        }
+    }
+
+    private static String eventTransactionId(GovernedLedgerPostingEvent event) {
+        return switch (event) {
+            case GovernedLedgerPostingEvent.Completed completed -> completed.transactionId();
+            case GovernedLedgerPostingEvent.Failed failed -> failed.transactionId();
+        };
     }
 }
